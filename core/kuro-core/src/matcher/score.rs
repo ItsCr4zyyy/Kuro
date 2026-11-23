@@ -95,6 +95,11 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
                     s = s.max(0.75 + 0.2 * ratio);
                 }
             }
+            // Krátké názvy: pár rozdílných písmen je velký rozdíl. "our boys"
+            // vs "the boys" vychází na 0.63, ale je to jiný seriál.
+            if s < SHORT_TITLE_MIN && p.chars().count().max(c.chars().count()) <= SHORT_TITLE_LEN {
+                s = 0.0;
+            }
             title_score = title_score.max(s);
         }
     }
@@ -178,6 +183,10 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
 
     MatchResult { confidence, reasons, rejected: None }
 }
+
+/// Do kolika znaků je název "krátký" a jakou podobnost musí mít.
+const SHORT_TITLE_LEN: usize = 12;
+const SHORT_TITLE_MIN: f64 = 0.8;
 
 /// Podtitul za dvojtečkou jako samostatný název: soubory se často jmenují
 /// jen "The Rings of Power" místo "The Lord of the Rings: The Rings of Power".

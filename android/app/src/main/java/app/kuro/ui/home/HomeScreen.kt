@@ -1,6 +1,33 @@
 package app.kuro.ui.home
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
+import app.kuro.R
+import app.kuro.ui.common.subtitle
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,7 +36,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -79,6 +105,28 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
         private set
     var offline by mutableStateOf(false)
         private set
+    var watchlistIds by mutableStateOf<Set<Long>>(emptySet())
+        private set
+
+    /**
+     * Velký titul nahoře: náhodně z prvních pár populárních, které mají
+     * obrázek pozadí. Náhodnost drží VM, takže se při posouvání nemění.
+     */
+    val featured: TitleCard?
+        get() = rows.firstOrNull()?.second
+            ?.filter { it.background != null }
+            ?.take(6)
+            ?.let { list -> if (list.isEmpty()) null else list[featuredSeed % list.size] }
+
+    private val featuredSeed = (0..1000).random()
+
+    fun toggleFeaturedWatchlist() {
+        val card = featured ?: return
+        val on = card.id !in watchlistIds
+        runCatching { core.setWatchlist(card.id, on) }.onSuccess {
+            watchlistIds = if (on) watchlistIds + card.id else watchlistIds - card.id
+        }
+    }
 
     init {
         load()
@@ -93,6 +141,7 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
 
     fun refreshLocal() {
         continueItems = runCatching { core.continueWatching(20) }.getOrDefault(emptyList())
+        watchlistIds = runCatching { core.watchlist().map { it.id }.toSet() }.getOrDefault(emptySet())
     }
 
     fun load() {
@@ -138,22 +187,14 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
     PullToRefreshBox(isRefreshing = vm.loading, onRefresh = vm::load, modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text("KURO", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
-                    },
+                Hero(
+                    card = vm.featured,
+                    section = vm.section,
+                    inWatchlist = vm.featured?.id?.let { it in vm.watchlistIds } == true,
+                    onSelect = vm::select,
+                    onOpen = onOpen,
+                    onToggleWatchlist = vm::toggleFeaturedWatchlist,
                 )
-            }
-            item {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(Section.entries) { s ->
-                        FilterChip(selected = vm.section == s, onClick = { vm.select(s) }, label = { Text(s.label) })
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
             }
             if (vm.continueItems.isNotEmpty()) {
                 item {
@@ -200,6 +241,92 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
                     )
+                }
+            }
+        }
+    }
+}
+
+/** Velký doporučený titul nahoře s logem a přepínačem sekcí přes obrázek. */
+@Composable
+private fun Hero(
+    card: TitleCard?,
+    section: Section,
+    inWatchlist: Boolean,
+    onSelect: (Section) -> Unit,
+    onOpen: (Long) -> Unit,
+    onToggleWatchlist: () -> Unit,
+) {
+    val bg = MaterialTheme.colorScheme.background
+    Box(Modifier.fillMaxWidth().height(if (card != null) 480.dp else 120.dp)) {
+        if (card != null) {
+            AsyncImage(
+                model = card.background ?: card.poster,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clickable { onOpen(card.id) },
+            )
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.6f),
+                        0.25f to Color.Transparent,
+                        0.55f to bg.copy(alpha = 0.35f),
+                        1f to bg,
+                    ),
+                ),
+            )
+        }
+        Row(
+            Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Image(painterResource(R.drawable.ic_kuro_mark), contentDescription = "Kuro", modifier = Modifier.size(44.dp))
+            Section.entries.forEach { s ->
+                FilterChip(
+                    selected = section == s,
+                    onClick = { onSelect(s) },
+                    label = { Text(s.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = Color.Black.copy(alpha = 0.35f),
+                        labelColor = Color.White,
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = section == s,
+                        borderColor = Color.White.copy(alpha = 0.35f),
+                    ),
+                )
+            }
+        }
+        if (card != null) {
+            Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    card.title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    listOfNotNull(card.subtitle(), card.genres.take(3).joinToString(" · ").ifEmpty { null }).joinToString("  ·  "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onOpen(card.id) }) {
+                        Icon(Icons.Filled.PlayArrow, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Sledovat")
+                    }
+                    OutlinedButton(onClick = onToggleWatchlist) {
+                        Icon(if (inWatchlist) Icons.Filled.Check else Icons.Filled.Add, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (inWatchlist) "V oblíbených" else "Oblíbené")
+                    }
                 }
             }
         }

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo Kuro: kočičí hlava (kuro neko = černá kočka) s tlačítkem přehrát.
+     Kreslené v mřížce 108 jako adaptivní ikona; tvary jsou v bezpečné zóně (21–87). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- uši (zaoblené rohy přes tah stejné barvy) -->
+    <path
+        android:fillColor="#E5484D"
+        android:strokeColor="#E5484D"
+        android:strokeWidth="6"
+        android:strokeLineJoin="round"
+        android:pathData="M33,54 L37,29 L54,44 Z" />
+    <path
+        android:fillColor="#E5484D"
+        android:strokeColor="#E5484D"
+        android:strokeWidth="6"
+        android:strokeLineJoin="round"
+        android:pathData="M75,54 L71,29 L54,44 Z" />
+    <!-- hlava -->
+    <path
+        android:fillColor="#E5484D"
+        android:pathData="M29,61 a25,21 0 1,0 50,0 a25,21 0 1,0 -50,0 Z" />
+    <!-- přehrát (tmavý, zaoblený) -->
+    <path
+        android:fillColor="#0B0A0D"
+        android:strokeColor="#0B0A0D"
+        android:strokeWidth="3.5"
+        android:strokeLineJoin="round"
+        android:pathData="M49,53 L49,69 L62,61 Z" />
+</vector>

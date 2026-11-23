@@ -401,3 +401,24 @@ fn movie_year_mismatch_still_rejects() {
     let res = score_match(&parse_release("Interstellar.2019.1080p.mkv"), &interstellar());
     assert!(res.rejected.as_deref().is_some_and(|r| r.starts_with("rok nesedí")));
 }
+
+#[test]
+fn short_titles_need_close_match() {
+    // Živě: "Our Boys S01E01" prošlo jako "The Boys" (podobnost 0.63).
+    let boys = MatchTarget {
+        title_cs: "The Boys".into(),
+        title_orig: "The Boys".into(),
+        aliases: vec![],
+        year: Some(2019),
+        runtime: Some(60),
+        kind: MediaKind::Series,
+        season: Some(1),
+        episode: Some(1),
+    };
+    assert!(score_match(&parse_release("Our Boys S01E01 Out of the Depth.mkv"), &boys).rejected.is_some());
+
+    let ok = score_match(&parse_release("The.Boys.2019.S01E01.1080p.WEBRip.x265.mkv"), &boys);
+    assert!(ok.rejected.is_none() && ok.confidence >= MIN_CONFIDENCE, "{ok:?}");
+    let ok = score_match(&parse_release("The Boys S01E01 CZ dabing.mkv"), &boys);
+    assert!(ok.rejected.is_none(), "{ok:?}");
+}

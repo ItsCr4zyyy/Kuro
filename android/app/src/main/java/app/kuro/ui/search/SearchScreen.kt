@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -28,12 +29,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -49,6 +53,7 @@ import app.kuro.ui.common.Message
 import app.kuro.ui.common.PosterCard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
 class SearchViewModel(private val core: KuroCore) : ViewModel() {
@@ -128,6 +133,16 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
     val core = kuroApp().core
     val vm: SearchViewModel = viewModel { SearchViewModel(core) }
     val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val gridState = rememberLazyGridState()
+    val hideKeyboard = {
+        focus.clearFocus()
+        keyboard?.hide()
+    }
+    // Posouvání výsledků = uživatel už nepíše → zavřít klávesnici.
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.isScrollInProgress }.filter { it }.collect { hideKeyboard() }
+    }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         OutlinedTextField(
@@ -142,7 +157,7 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { vm.submit(); focus.clearFocus() }),
+            keyboardActions = KeyboardActions(onSearch = { vm.submit(); hideKeyboard() }),
             modifier = Modifier.fillMaxWidth().padding(16.dp, 12.dp, 16.dp, 4.dp),
         )
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -164,10 +179,12 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(vm.results, key = { it.id }) { card ->
                     PosterCard(card, onClick = {
+                        hideKeyboard()
                         vm.clicked(card)
                         onOpen(card.id)
                     }, modifier = Modifier.fillMaxWidth())

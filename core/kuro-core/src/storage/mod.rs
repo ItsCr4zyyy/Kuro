@@ -86,7 +86,23 @@ impl Db {
             v => return Err(Error::Db(format!("chybí migrace ze schématu {v}"))),
         }
 
-        Ok(Self { conn: Mutex::new(conn), clock })
+        let db = Self { conn: Mutex::new(conn), clock };
+        db.invalidate_streams_on_matcher_change()?;
+        Ok(db)
+    }
+
+    /// Po změně pravidel párování zahodit uložené zdroje (ne statistiky
+    /// přehrávání — ty patří ke konkrétním souborům a platí dál).
+    fn invalidate_streams_on_matcher_change(&self) -> Result<()> {
+        let want = crate::matcher::MATCHER_VERSION.to_string();
+        if self.kv_get("matcher_version")?.as_deref() == Some(want.as_str()) {
+            return Ok(());
+        }
+        self.with(|c| {
+            c.execute_batch("DELETE FROM stream; DELETE FROM stream_search;")?;
+            Ok(())
+        })?;
+        self.kv_set("matcher_version", &want)
     }
 
     pub(crate) fn now(&self) -> i64 {

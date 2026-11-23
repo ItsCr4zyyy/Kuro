@@ -254,3 +254,29 @@ fn prune_respects_pins_ttl_and_budget() {
     let r = db.deep_clean(Budget::default()).unwrap();
     assert_eq!(r.titles_left, 2, "zůstanou jen připnuté");
 }
+
+#[test]
+fn matcher_version_change_drops_cached_streams() {
+    let dir = std::env::temp_dir().join(format!("kuro-mv-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("k.db");
+    {
+        let db = Db::open(&path).unwrap();
+        let id = db.upsert_cards(&[meta("tt1", "A", MediaKind::Movie, &["Drama"], 2015)]).unwrap()[0];
+        db.save_streams(Target::movie(id), &[stream("x", &["cs"], 1080)]).unwrap();
+        db.report_stream(ProviderId::Webshare, "x", true).unwrap();
+        // Simulace staré verze párovače.
+        db.kv_set("matcher_version", "0").unwrap();
+    }
+    let db = Db::open(&path).unwrap();
+    let id = db.title_by_imdb(MediaKind::Movie, "tt1").unwrap().unwrap().id;
+    let cached = db.cached_streams(Target::movie(id)).unwrap();
+    assert!(cached.streams.is_empty() && cached.searched_at.is_none(), "staré zdroje pryč");
+    // Při stejné verzi se nic nemaže.
+    db.save_streams(Target::movie(id), &[stream("y", &[], 720)]).unwrap();
+    drop(db);
+    let db = Db::open(&path).unwrap();
+    assert_eq!(db.cached_streams(Target::movie(id)).unwrap().streams.len(), 1);
+    drop(db);
+    let _ = std::fs::remove_dir_all(dir);
+}
