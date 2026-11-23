@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["kuro-core"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+regex = "1"
+unicode-normalization = "0.1"
+md-5 = "0.10"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"

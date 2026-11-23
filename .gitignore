@@ -1,0 +1,25 @@
+# Rust
+core/target/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/**/build/
+android/local.properties
+android/.idea/
+android/app/src/main/jniLibs/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Secrets / local
+.env
+.env.*
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
