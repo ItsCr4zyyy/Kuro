@@ -71,6 +71,7 @@ import app.kuro.core.StreamInfo
 import app.kuro.core.TitleDetail
 import app.kuro.kuroApp
 import app.kuro.player.PlayerActivity
+import app.kuro.tv.TvMedia
 import app.kuro.ui.common.BadgeRow
 import app.kuro.ui.common.Loading
 import app.kuro.ui.common.Message
@@ -118,9 +119,51 @@ fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
         }
     }
 
+    val core = kuroApp().core
+    val tv = kuroApp().tv
+    /** Kde na TV navázat (stejně jako přehrávač v telefonu). */
+    fun resumeSec(t: PlayTarget): Long {
+        val p = runCatching { core.progress(titleId, t.season, t.episode) }.getOrNull() ?: return 0
+        return if (p.finished || p.positionMs < 30_000) 0 else (p.positionMs / 1000 - 3).coerceAtLeast(0)
+    }
+
     LaunchedEffect(vm.event) {
         when (val e = vm.event) {
             PlayEvent.NeedLogin -> onLogin()
+            is PlayEvent.Ready if tv.connected != null -> {
+                // Připojená televize: pustit tam místo telefonu.
+                tv.play(
+                    TvMedia(
+                        url = e.link.url,
+                        title = vm.detail?.card?.title.orEmpty(),
+                        subtitle = e.target.label.takeIf { e.target.season > 0 },
+                        subtitles = e.link.subtitles,
+                        startSec = resumeSec(e.target),
+                        titleId = titleId,
+                        season = e.target.season,
+                        episode = e.target.episode,
+                        provider = e.stream.provider,
+                        ident = e.stream.ident,
+                    ),
+                )
+                vm.closeStreams()
+            }
+            is PlayEvent.Local if tv.connected != null -> {
+                tv.play(
+                    TvMedia(
+                        url = e.file.path,
+                        title = vm.detail?.card?.title.orEmpty(),
+                        subtitle = e.target.label.takeIf { e.target.season > 0 },
+                        subtitles = emptyList(),
+                        startSec = resumeSec(e.target),
+                        titleId = titleId,
+                        season = e.target.season,
+                        episode = e.target.episode,
+                        provider = e.download.provider ?: Provider.WEBSHARE,
+                        ident = e.download.ident,
+                    ),
+                )
+            }
             is PlayEvent.Ready -> {
                 val card = vm.detail?.card
                 PlayerActivity.start(
@@ -199,6 +242,7 @@ private fun DetailContent(d: TitleDetail, vm: DetailViewModel, onBack: () -> Uni
                     ),
                 )
                 BackButton(onBack, Modifier.statusBarsPadding())
+                app.kuro.ui.tv.TvButton(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp))
             }
         }
         item {

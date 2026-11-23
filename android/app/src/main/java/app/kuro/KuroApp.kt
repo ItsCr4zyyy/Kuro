@@ -28,6 +28,9 @@ class KuroApp : Application(), SingletonImageLoader.Factory {
     lateinit var settings: Settings
         private set
 
+    /** Přehrávání na televizi (Cast / DLNA); vzniká až při prvním použití. */
+    val tv by lazy { app.kuro.tv.TvManager(this, core) }
+
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)

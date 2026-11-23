@@ -15,6 +15,9 @@ coroutines = "1.11.0"
 jna = "5.17.0"
 # libmpv + FFmpeg pro Android (MIT, github.com/abdallahmehiz/mpv-android).
 mpv = "0.2.2"
+# Google Cast (Chromecast / Google TV) — výchozí přijímač Googlu.
+castFramework = "22.3.1"
+mediarouter = "1.8.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -35,6 +38,8 @@ coil-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 mpv = { module = "io.github.abdallahmehiz:mpv-android-lib", version.ref = "mpv" }
+cast-framework = { module = "com.google.android.gms:play-services-cast-framework", version.ref = "castFramework" }
+mediarouter = { module = "androidx.mediarouter:mediarouter", version.ref = "mediarouter" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

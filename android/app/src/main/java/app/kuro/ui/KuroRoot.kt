@@ -55,6 +55,9 @@ fun KuroRoot() {
 
     Scaffold(
         bottomBar = {
+            androidx.compose.foundation.layout.Column {
+            // Ovladač televize (jen když je připojená).
+            app.kuro.ui.tv.TvMiniBar()
             if (showBar) {
                 NavigationBar {
                     Tab.entries.forEach { tab ->
@@ -67,6 +70,7 @@ fun KuroRoot() {
                         )
                     }
                 }
+            }
             }
         },
     ) { pad ->
