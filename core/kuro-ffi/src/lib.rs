@@ -89,7 +89,12 @@ impl KuroCore {
     }
 
     pub fn set_webshare_token(&self, token: Option<String>) {
+        let login = token.is_some() && self.webshare.token().is_none();
         self.webshare.set_token(token);
+        if login {
+            // Po přihlášení hledat znovu i u Webshare.
+            let _ = self.db.mark_streams_stale();
+        }
     }
 
     pub fn is_webshare_logged_in(&self) -> bool {
@@ -232,7 +237,7 @@ impl KuroCore {
     pub fn cached_streams(&self, title_id: i64, season: i32, episode: i32) -> Result<StreamList> {
         let c = self.db.cached_streams(target(title_id, season, episode))?;
         Ok(StreamList {
-            streams: c.streams.iter().map(StreamInfo::from).collect(),
+            streams: c.streams.iter().filter(|s| self.finder.is_active(s.provider)).map(StreamInfo::from).collect(),
             is_fresh: c.is_fresh,
             searched_at_ms: c.searched_at,
         })
@@ -286,7 +291,17 @@ impl KuroCore {
         let streams = kuro_core::finder::collapse_duplicates(streams);
         self.db.save_streams(tgt, &streams)?;
         let cached = self.db.cached_streams(tgt)?;
-        Ok(cached.streams.iter().map(StreamInfo::from).collect())
+        Ok(cached.streams.iter().filter(|s| self.finder.is_active(s.provider)).map(StreamInfo::from).collect())
+    }
+
+    /// Zdroje vypnuté v nastavení (výchozí: žádné). Při zapnutí zdroje se
+    /// uložené výsledky označí za staré, ať se dohledají.
+    pub fn set_disabled_providers(&self, providers: Vec<Provider>) -> Result<()> {
+        let ids = providers.into_iter().map(Into::into).collect();
+        if self.finder.set_disabled(ids) {
+            self.db.mark_streams_stale()?;
+        }
+        Ok(())
     }
 
     /// Přímý odkaz pro přehrávač / stahování. Nikdy ho neukládat — je
@@ -520,7 +535,7 @@ impl KuroCore {
                 let (s, e) = if is_series { (1, 1) } else { (0, 0) };
                 let cached = self.db.cached_streams(target(*id, s, e))?;
                 let available = if cached.is_fresh {
-                    !cached.streams.is_empty()
+                    cached.streams.iter().any(|s| self.finder.is_active(s.provider))
                 } else {
                     self.find_streams(*id, s, e, None).await.map(|v| !v.is_empty()).unwrap_or(false)
                 };
@@ -647,6 +662,16 @@ mod tests {
         assert!(!core.is_webshare_logged_in());
         assert!(core.watchlist().unwrap().is_empty());
         assert!(core.search_local("x".into(), None, 5).unwrap().is_empty());
+
+        // Webshare bez přihlášení neaktivní, zdroje bez účtu ano — dokud se nevypnou.
+        use kuro_core::providers::ProviderId as P;
+        assert!(!core.finder.is_active(P::Webshare));
+        assert!(core.finder.is_active(P::Hellspy));
+        core.set_disabled_providers(vec![Provider::Hellspy]).unwrap();
+        assert!(!core.finder.is_active(P::Hellspy));
+        assert!(core.finder.is_active(P::PrehrajTo));
+        core.set_disabled_providers(vec![]).unwrap();
+        assert!(core.finder.is_active(P::Hellspy));
         drop(core);
         let _ = std::fs::remove_dir_all(dir);
     }

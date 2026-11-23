@@ -2,6 +2,7 @@ package app.kuro.data
 
 import android.content.Context
 import androidx.core.content.edit
+import app.kuro.core.Provider
 
 /** Nastavení aplikace (lokálně, nikam se nesynchronizuje). */
 class Settings(context: Context) {
@@ -32,6 +33,12 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_WIFI_ONLY, true)
         set(v) = prefs.edit { putBoolean(KEY_WIFI_ONLY, v) }
 
+    /** Zdroje vypnuté v nastavení (výchozí žádný — všechny se prohledávají). */
+    var disabledProviders: Set<Provider>
+        get() = prefs.getStringSet(KEY_DISABLED_PROVIDERS, emptySet()).orEmpty()
+            .mapNotNull { n -> Provider.entries.find { it.name == n } }.toSet()
+        set(v) = prefs.edit { putStringSet(KEY_DISABLED_PROVIDERS, v.map { it.name }.toSet()) }
+
     companion object {
         const val DEFAULT_MAX_TITLES = 3000
         val MAX_TITLES_OPTIONS = listOf(1000, 3000, 10000)
@@ -39,5 +46,6 @@ class Settings(context: Context) {
         private const val KEY_MAX_TITLES = "max_titles"
         private const val KEY_BANDWIDTH = "bandwidth_bps"
         private const val KEY_WIFI_ONLY = "download_wifi_only"
+        private const val KEY_DISABLED_PROVIDERS = "disabled_providers"
     }
 }

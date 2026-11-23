@@ -11,6 +11,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -34,6 +36,7 @@ import app.kuro.core.AccountInfo
 import app.kuro.core.DownloadStatus
 import app.kuro.ui.common.formatSize
 import app.kuro.core.KuroException
+import app.kuro.core.Provider
 import app.kuro.data.Settings
 import app.kuro.data.TokenVault
 import app.kuro.kuroApp
@@ -80,29 +83,59 @@ fun SettingsScreen(onLogin: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         TopAppBar(title = { Text("Nastavení") })
 
-        Group("Účet Webshare") {
-            if (loggedIn) {
-                Text(account?.username?.let { "Přihlášen jako $it" } ?: "Přihlášen", fontWeight = FontWeight.SemiBold)
-                account?.let { a ->
-                    Text(
-                        if (a.vip) "VIP" + (a.vipUntil?.let { " do ${it.take(10)}" } ?: "") else "Bez VIP — přehrávání bude pomalé",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (a.vip) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                    )
+        Group("Zdroje") {
+            var disabled by remember { mutableStateOf(app.settings.disabledProviders) }
+            fun toggle(p: Provider, on: Boolean) {
+                disabled = if (on) disabled - p else disabled + p
+                app.settings.disabledProviders = disabled
+                app.core.setDisabledProviders(disabled.toList())
+            }
+
+            ProviderRow(
+                name = "Webshare",
+                note = when {
+                    !loggedIn -> "Potřebuje účet. Původní kvalita (4K, HDR), všechny zvukové stopy."
+                    account?.vip == true -> "Přihlášen" + (account?.username?.let { " jako $it" } ?: "") +
+                        " · VIP" + (account?.vipUntil?.let { " do ${it.take(10)}" } ?: "")
+                    account != null -> "Přihlášen" + (account?.username?.let { " jako $it" } ?: "") +
+                        " · bez VIP, přehrávání bude pomalé"
+                    else -> accountError ?: "Přihlášen"
+                },
+                checked = Provider.WEBSHARE !in disabled,
+                onChecked = { toggle(Provider.WEBSHARE, it) },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (loggedIn) {
+                    OutlinedButton(onClick = {
+                        app.core.setWebshareToken(null)
+                        app.vault.save(TokenVault.WEBSHARE, null)
+                        loggedIn = false
+                    }) { Text("Odhlásit") }
+                } else {
+                    Button(onClick = onLogin) { Text("Přihlásit k Webshare") }
                 }
-                accountError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                OutlinedButton(onClick = {
-                    app.core.setWebshareToken(null)
-                    app.vault.save(TokenVault.WEBSHARE, null)
-                    loggedIn = false
-                }) { Text("Odhlásit") }
-            } else {
+            }
+
+            HorizontalDivider()
+            ProviderRow(
+                name = "Přehraj.to",
+                note = "Bez účtu. Převod do 1080p, obvykle jedna zvuková stopa, titulky.",
+                checked = Provider.PREHRAJ_TO !in disabled,
+                onChecked = { toggle(Provider.PREHRAJ_TO, it) },
+            )
+            ProviderRow(
+                name = "Hellspy",
+                note = "Bez účtu. Převod do 1080p, titulky. Část souborů je stejná jako na Přehraj.to.",
+                checked = Provider.HELLSPY !in disabled,
+                onChecked = { toggle(Provider.HELLSPY, it) },
+            )
+            val active = Provider.entries.count { it !in disabled && (it != Provider.WEBSHARE || loggedIn) }
+            if (active == 0) {
                 Text(
-                    "Nepřihlášeno. Bez účtu Kuro přehrává z Přehraj.to a Hellspy (max. 1080p). " +
-                        "Webshare účet přidá původní kvalitu (4K, HDR, všechny zvukové stopy).",
+                    "Žádný zdroj není zapnutý — nic nepůjde přehrát.",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
                 )
-                Button(onClick = onLogin) { Text("Přihlásit") }
             }
         }
 
@@ -152,7 +185,7 @@ fun SettingsScreen(onLogin: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                androidx.compose.material3.Switch(checked = wifiOnly, onCheckedChange = {
+                Switch(checked = wifiOnly, onCheckedChange = {
                     wifiOnly = it
                     app.settings.downloadWifiOnly = it
                 })
@@ -172,7 +205,7 @@ fun SettingsScreen(onLogin: () -> Unit) {
             Text(
                 "Všechno zůstává v telefonu: historie, pozice, oblíbené i stažené soubory. Kuro nemá " +
                     "vlastní server ani cloud a nic nezálohuje. Ven jdou jen dotazy na katalog " +
-                    "(Cinemeta, Wikidata) a na tvé úložiště.",
+                    "(Cinemeta, Wikidata) a na zapnuté zdroje.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -184,6 +217,17 @@ fun SettingsScreen(onLogin: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally),
         )
+    }
+}
+
+@Composable
+private fun ProviderRow(name: String, note: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
 

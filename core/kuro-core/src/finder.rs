@@ -184,6 +184,8 @@ impl FindReport {
 pub struct StreamFinder {
     providers: Vec<(Arc<dyn Provider>, Arc<Semaphore>)>,
     cfg: FinderConfig,
+    /// Zdroje vypnuté uživatelem v nastavení.
+    disabled: std::sync::RwLock<Vec<ProviderId>>,
 }
 
 impl StreamFinder {
@@ -195,7 +197,23 @@ impl StreamFinder {
                 (p, sem)
             })
             .collect();
-        Self { providers, cfg }
+        Self { providers, cfg, disabled: Default::default() }
+    }
+
+    /// Vypne / zapne zdroje (nastavení). Vrací true, když přibyl zapnutý
+    /// zdroj — uložené výsledky pak nejsou úplné.
+    pub fn set_disabled(&self, ids: Vec<ProviderId>) -> bool {
+        let mut d = self.disabled.write().expect("zámek");
+        let newly_enabled = d.iter().any(|p| !ids.contains(p));
+        *d = ids;
+        newly_enabled
+    }
+
+    /// Zdroj se prohledává a jeho výsledky se ukazují: je zapnutý a umí
+    /// vydat odkaz (Webshare jen s přihlášením).
+    pub fn is_active(&self, id: ProviderId) -> bool {
+        !self.disabled.read().expect("zámek").contains(&id)
+            && self.providers.iter().any(|(p, _)| p.id() == id && p.can_resolve())
     }
 
     /// Najde zdroje k cíli. `on_partial` dostává průběžně seřazený seznam
@@ -212,7 +230,7 @@ impl StreamFinder {
         let mut tasks = FuturesUnordered::new();
         // Provider, který teď neumí vydat odkaz (Webshare bez přihlášení),
         // se vůbec neptá — jeho zdroje by nešly pustit.
-        for (provider, sem) in self.providers.iter().filter(|(p, _)| p.can_resolve()) {
+        for (provider, sem) in self.providers.iter().filter(|(p, _)| self.is_active(p.id())) {
             for q in &queries {
                 let (provider, sem, opts) = (provider.clone(), sem.clone(), opts.clone());
                 let q = q.clone();

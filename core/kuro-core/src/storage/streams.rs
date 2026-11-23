@@ -127,6 +127,15 @@ impl Db {
         })
     }
 
+    /// Všechny uložené výsledky označí za staré (přibyl zdroj / přihlášení):
+    /// ukážou se hned, ale na pozadí se hledá znovu.
+    pub fn mark_streams_stale(&self) -> Result<()> {
+        self.with(|c| {
+            c.execute("UPDATE stream_search SET searched_at = 0", [])?;
+            Ok(())
+        })
+    }
+
     /// Uložené zdroje k cíli, seřazené, se statistikou z přehrávání.
     pub fn cached_streams(&self, target: Target) -> Result<CachedStreams> {
         let now = self.now();
