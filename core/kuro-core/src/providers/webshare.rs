@@ -95,6 +95,10 @@ impl Provider for Webshare {
         3
     }
 
+    fn can_resolve(&self) -> bool {
+        self.token.read().unwrap().is_some()
+    }
+
     /// Dvoukrokový login: nejdřív salt uživatele, pak derivovaný hash —
     /// heslo v čitelné podobě neodchází nikdy.
     async fn login(&self, username: &str, password: &str) -> Result<String> {
@@ -182,6 +186,7 @@ impl Provider for Webshare {
             url,
             headers: vec![],
             expires_at_ms: Some(crate::time::now_ms() + LINK_TTL_MS),
+            subtitles: vec![],
         })
     }
 }
@@ -276,6 +281,8 @@ pub(crate) fn parse_search(xml: &str) -> Result<Vec<RawFile>> {
             password_protected: child_text(f, "password").as_deref() == Some("1"),
             // Výsledky hledání délku nenesou; bere se z file_info.
             duration_sec: None,
+            max_height: None,
+            dedup_key: None,
         })
         .filter(|f| !f.ident.is_empty())
         .collect())
@@ -304,6 +311,8 @@ pub(crate) fn parse_file_info(xml: &str, ident: &str) -> Result<RawFile> {
         negative_votes: child_num(r, "negative_votes"),
         password_protected: child_text(r, "password").as_deref() == Some("1"),
         duration_sec: duration,
+        max_height: None,
+        dedup_key: None,
     })
 }
 

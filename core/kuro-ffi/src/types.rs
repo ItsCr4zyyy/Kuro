@@ -41,12 +41,16 @@ pub enum Catalog {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum Provider {
     Webshare,
+    PrehrajTo,
+    Hellspy,
 }
 
 impl From<Provider> for ProviderId {
     fn from(p: Provider) -> Self {
         match p {
             Provider::Webshare => ProviderId::Webshare,
+            Provider::PrehrajTo => ProviderId::PrehrajTo,
+            Provider::Hellspy => ProviderId::Hellspy,
         }
     }
 }
@@ -55,6 +59,8 @@ impl From<ProviderId> for Provider {
     fn from(p: ProviderId) -> Self {
         match p {
             ProviderId::Webshare => Provider::Webshare,
+            ProviderId::PrehrajTo => Provider::PrehrajTo,
+            ProviderId::Hellspy => Provider::Hellspy,
         }
     }
 }
@@ -261,6 +267,16 @@ pub struct PlayLink {
     pub headers: std::collections::HashMap<String, String>,
     /// Po tomhle čase si říct o nový odkaz. Odkaz NIKDY neukládat.
     pub expires_at_ms: Option<i64>,
+    /// Externí titulky od zdroje (Přehraj.to/Hellspy), přidat do přehrávače.
+    pub subtitles: Vec<SubtitleInfo>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SubtitleInfo {
+    /// ISO 639-1 ("cs", "en"), když jde určit.
+    pub lang: String,
+    pub label: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

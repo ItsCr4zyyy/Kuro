@@ -58,6 +58,25 @@ impl FoundStream {
     }
 }
 
+/// Sloučí kopie stejného souboru (stejný soubor nahraný víckrát, často
+/// i u více providerů): stejná velikost (na 10 MB), rozlišení a zvuk.
+/// Vstup musí být seřazený — z každé skupiny zůstane první (nejlepší
+/// včetně statistik přehrání, takže nefunkční kopii nahradí funkční).
+pub fn collapse_duplicates(streams: Vec<FoundStream>) -> Vec<FoundStream> {
+    let mut seen = std::collections::HashSet::new();
+    streams
+        .into_iter()
+        .filter(|s| {
+            if s.size_bytes == 0 {
+                return true;
+            }
+            let mut langs = s.audio_langs.clone();
+            langs.sort();
+            seen.insert((s.size_bytes / 10_000_000, s.height, langs, s.dubbed))
+        })
+        .collect()
+}
+
 /// Seřadí zdroje pro uživatele (nejlepší první).
 pub fn sort_streams(streams: &mut [FoundStream]) {
     streams.sort_by(|a, b| {
@@ -191,7 +210,9 @@ impl StreamFinder {
         let opts = SearchOptions { limit: self.cfg.search_limit, offset: 0, sort: SearchSort::Largest };
 
         let mut tasks = FuturesUnordered::new();
-        for (provider, sem) in &self.providers {
+        // Provider, který teď neumí vydat odkaz (Webshare bez přihlášení),
+        // se vůbec neptá — jeho zdroje by nešly pustit.
+        for (provider, sem) in self.providers.iter().filter(|(p, _)| p.can_resolve()) {
             for q in &queries {
                 let (provider, sem, opts) = (provider.clone(), sem.clone(), opts.clone());
                 let q = q.clone();
@@ -204,6 +225,8 @@ impl StreamFinder {
 
         let mut report = FindReport::default();
         let mut found: HashMap<(ProviderId, String), FoundStream> = HashMap::new();
+        // Stejný soubor u více providerů (Hellspy zrcadlí Přehraj.to) jen jednou.
+        let mut dedup: HashMap<String, (ProviderId, String)> = HashMap::new();
 
         while let Some((pid, result)) = tasks.next().await {
             report.queries += 1;
@@ -222,6 +245,15 @@ impl StreamFinder {
                 match self.evaluate(pid, &file, target) {
                     Ok(s) => {
                         let key = (pid, s.ident.clone());
+                        if let Some(dk) = &file.dedup_key {
+                            match dedup.get(dk) {
+                                Some(owner) if *owner != key => continue,
+                                Some(_) => {}
+                                None => {
+                                    dedup.insert(dk.clone(), key.clone());
+                                }
+                            }
+                        }
                         let better = found.get(&key).is_none_or(|old| old.confidence < s.confidence);
                         if better {
                             found.insert(key, s);
@@ -256,6 +288,15 @@ impl StreamFinder {
             return Err(category(&r));
         }
 
+        // Délka souboru (když ji provider zná) proti délce titulu: odhalí
+        // ukázky, celé sezóny v jednom souboru i úplně jiná videa.
+        if let (Some(dur), Some(rt)) = (file.duration_sec, target.runtime) {
+            let ratio = f64::from(dur) / (f64::from(rt) * 60.0);
+            if !(0.6..=1.6).contains(&ratio) {
+                return Err("délka nesedí".into());
+            }
+        }
+
         let (factor, reason) = size_sanity(file.size_bytes, target.runtime, parsed.height);
         let confidence = m.confidence * factor;
         if confidence < self.cfg.min_confidence {
@@ -272,9 +313,14 @@ impl StreamFinder {
             ident: file.ident.clone(),
             filename: file.name.clone(),
             size_bytes: file.size_bytes,
-            height: parsed.height,
-            hdr: parsed.hdr,
-            video_codec: parsed.video_codec.map(str::to_owned),
+            // Provider streamuje převod (Přehraj.to/Hellspy): rozlišení max.
+            // jeho strop, HDR a kodek z názvu souboru pro převod neplatí.
+            height: match file.max_height {
+                Some(cap) => Some(parsed.height.map_or(cap, |h| h.min(cap))),
+                None => parsed.height,
+            },
+            hdr: if file.max_height.is_some() { None } else { parsed.hdr },
+            video_codec: if file.max_height.is_some() { None } else { parsed.video_codec.map(str::to_owned) },
             audio_codec: parsed.audio_codec.map(str::to_owned),
             channels: parsed.channels.map(str::to_owned),
             source: parsed.source.map(str::to_owned),
@@ -315,6 +361,43 @@ mod tests {
             season: None,
             episode: None,
         }
+    }
+
+    #[test]
+    fn duplicates_collapse_to_best_copy() {
+        let mk = |ident: &str, gb: f64, h: u16, langs: &[&str], fails: u32| FoundStream {
+            provider: ProviderId::PrehrajTo,
+            ident: ident.into(),
+            filename: format!("{ident}.mp4"),
+            size_bytes: (gb * 1e9) as u64,
+            height: Some(h),
+            hdr: None,
+            video_codec: None,
+            audio_codec: None,
+            channels: None,
+            source: None,
+            audio_langs: langs.iter().map(|l| l.to_string()).collect(),
+            sub_langs: vec![],
+            dubbed: true,
+            dual_audio: false,
+            lang_explicit: true,
+            confidence: 1.0,
+            positive_votes: 0,
+            negative_votes: 0,
+            ok_count: 0,
+            fail_count: fails,
+        };
+        let mut v = vec![
+            mk("a", 13.76, 1080, &["cs", "en"], 2), // mrtvá kopie
+            mk("b", 13.76, 1080, &["en", "cs"], 0),
+            mk("c", 13.76, 1080, &["cs", "en"], 0),
+            mk("d", 7.9, 1080, &["cs"], 0),
+            mk("e", 13.76, 720, &["cs", "en"], 0), // jiné rozlišení = jiný zdroj
+        ];
+        sort_streams(&mut v);
+        let out: Vec<String> = collapse_duplicates(v).into_iter().map(|s| s.ident).collect();
+        assert_eq!(out.len(), 3, "{out:?}");
+        assert!(!out.contains(&"a".to_string()), "mrtvou kopii nahradí funkční: {out:?}");
     }
 
     #[test]
@@ -373,6 +456,8 @@ mod tests {
             negative_votes: 0,
             password_protected: false,
             duration_sec: None,
+            max_height: None,
+            dedup_key: None,
         }
     }
 

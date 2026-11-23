@@ -80,7 +80,9 @@ import app.kuro.ui.common.formatPosition
 import app.kuro.ui.common.formatRuntime
 import app.kuro.ui.common.formatSize
 import app.kuro.ui.common.isSuspicious
+import app.kuro.ui.common.isTranscode
 import app.kuro.ui.common.kindLabel
+import app.kuro.ui.common.providerLabel
 import app.kuro.ui.common.languageLine
 import app.kuro.ui.common.qualityBadges
 import coil3.compose.AsyncImage
@@ -131,6 +133,7 @@ fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
                     url = e.link.url,
                     title = card?.title.orEmpty(),
                     subtitle = e.target.label.takeIf { e.target.season > 0 },
+                    subtitles = e.link.subtitles,
                 )
                 vm.closeStreams()
             }
@@ -358,7 +361,7 @@ private fun StreamsSheet(vm: DetailViewModel, onDownload: (StreamInfo) -> Unit) 
                 StreamRow(
                     s,
                     resolving = vm.resolving == s.ident,
-                    bitrate = s.estimatedBitrate(vm.detail?.runtimeMin),
+                    bitrate = if (s.isTranscode) null else s.estimatedBitrate(vm.detail?.runtimeMin),
                     tooHeavy = vm.tooHeavy(s),
                     bandwidth = vm.bandwidthBits,
                     downloaded = vm.target?.let { t -> vm.downloadFor(t.season, t.episode)?.ident == s.ident } == true,
@@ -389,10 +392,23 @@ private fun StreamRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            BadgeRow(s.qualityBadges())
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BadgeRow(s.qualityBadges())
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    providerLabel(s.provider),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
-                s.languageLine() + " · " + formatSize(s.sizeBytes) + (bitrate?.let { " · ≈ " + formatBitrate(it) } ?: ""),
+                if (s.isTranscode) {
+                    // Převod má jen jednu zvukovou stopu a jinou velikost než původní soubor.
+                    s.languageLine() + " · převod" + if (s.audioLangs.size > 1) " · jen 1 zvuková stopa" else ""
+                } else {
+                    s.languageLine() + " · " + formatSize(s.sizeBytes) + (bitrate?.let { " · ≈ " + formatBitrate(it) } ?: "")
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (czech) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (czech) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,

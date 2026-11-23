@@ -43,8 +43,10 @@ fn card(t: &TitleMeta) -> String {
 async fn webshare(http: reqwest::Client, require_login: bool) -> R<Arc<Webshare>> {
     // Stabilní pro CLI, ať Webshare nevidí pokaždé "nové zařízení".
     let ws = Arc::new(Webshare::new(http, "kuro-cli-0000-0000-0000-000000000001"));
+    // KURO_NO_LOGIN=1: chovat se jako uživatel bez Webshare účtu.
+    let skip = std::env::var("KURO_NO_LOGIN").is_ok();
     match (std::env::var("WEBSHARE_USER"), std::env::var("WEBSHARE_PASS")) {
-        (Ok(u), Ok(p)) if !u.is_empty() => {
+        (Ok(u), Ok(p)) if !u.is_empty() && !skip => {
             ws.login(&u, &p).await?;
             eprintln!("· přihlášeno k Webshare");
         }
@@ -136,7 +138,12 @@ async fn main() -> R<()> {
             };
 
             let ws = webshare(http.clone(), false).await?;
-            let finder = StreamFinder::new(vec![ws as Arc<dyn Provider>], FinderConfig::default());
+            let providers: Vec<Arc<dyn Provider>> = vec![
+                ws,
+                Arc::new(kuro_core::providers::PrehrajTo::new(http.clone())),
+                Arc::new(kuro_core::providers::Hellspy::new(http.clone())),
+            ];
+            let finder = StreamFinder::new(providers, FinderConfig::default());
             let started = std::time::Instant::now();
             let report = finder
                 .find(&target, &|partial| eprintln!("  … průběžně {} zdrojů", partial.len()))
@@ -156,7 +163,8 @@ async fn main() -> R<()> {
                     "zvuk neuveden".into()
                 };
                 println!(
-                    "{:>5}p {:<6} {:>8}  conf {:.2}  {:<38} {}\n        {}",
+                    "{:<9} {:>5}p {:<6} {:>8}  conf {:.2}  {:<38} {}\n        {}",
+                    s.provider.as_str(),
                     s.height.map_or("?".into(), |h| h.to_string()),
                     s.hdr.map_or("", |h| h.label()),
                     gb(s.size_bytes),
@@ -194,6 +202,20 @@ async fn main() -> R<()> {
             for f in ws.search(&q.join(" "), &opts).await? {
                 let p = kuro_core::matcher::parse_release(&f.name);
                 println!("{:>8}  {:<70} → {:?} S{:?}E{:?}", gb(f.size_bytes), f.name, p.title_norm, p.season, p.episode);
+            }
+        }
+
+        // Odkaz od zdroje bez přihlášení: link-free prehrajto|hellspy <ident>
+        ["link-free", provider, ident] => {
+            let p: Arc<dyn Provider> = match *provider {
+                "prehrajto" => Arc::new(kuro_core::providers::PrehrajTo::new(http)),
+                _ => Arc::new(kuro_core::providers::Hellspy::new(http)),
+            };
+            let link = p.resolve(ident, LinkPurpose::Stream).await?;
+            let host = link.url.split('/').take(3).collect::<Vec<_>>().join("/");
+            println!("odkaz: {host}/… (zkráceno), platnost do {:?}", link.expires_at_ms);
+            for s in &link.subtitles {
+                println!("titulky: {} ({})", s.lang, s.label);
             }
         }
 

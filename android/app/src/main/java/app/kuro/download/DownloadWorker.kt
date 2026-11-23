@@ -66,7 +66,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 val link = try {
                     // Jen debug build: ident = přímá URL (test bez Webshare účtu).
                     if (BuildConfig.DEBUG && d.ident.startsWith("http")) {
-                        PlayLink(d.ident, emptyMap(), null)
+                        PlayLink(d.ident, emptyMap(), null, emptyList())
                     } else {
                         core.resolveStream(provider, d.ident, LinkPurpose.DOWNLOAD)
                     }
@@ -79,6 +79,7 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 }
                 when (val r = transfer(d, link.url, link.headers, file, name)) {
                     TransferResult.Done -> {
+                        saveSubtitles(link.subtitles, file)
                         core.updateDownload(id, DownloadStatus.DONE, file.length(), file.length(), file.path, null)
                         notifyDone(name)
                         return@withContext Result.success()
@@ -149,6 +150,22 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
             return TransferResult.Done
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /** Titulky od zdroje vedle videa ("<video>.<jazyk>.<n>.vtt") pro offline přehrání. */
+    private fun saveSubtitles(subs: List<app.kuro.core.SubtitleInfo>, video: File) {
+        subs.forEachIndexed { i, s ->
+            runCatching {
+                val ext = s.url.substringBefore('?').substringAfterLast('.', "vtt").take(4)
+                val out = File(video.parentFile, "${video.nameWithoutExtension}.${s.lang}.$i.$ext")
+                (URL(s.url).openConnection() as HttpURLConnection).run {
+                    connectTimeout = 15_000
+                    readTimeout = 30_000
+                    inputStream.use { input -> out.outputStream().use { input.copyTo(it) } }
+                    disconnect()
+                }
+            }
         }
     }
 
@@ -250,7 +267,10 @@ object Downloads {
         WorkManager.getInstance(context).cancelUniqueWork(name(d.id))
         val app = context.applicationContext as KuroApp
         val path = app.core.deleteDownload(d.id)
-        (path?.let(::File) ?: fileFor(context, d)).delete()
+        val video = path?.let(::File) ?: fileFor(context, d)
+        // I stažené titulky vedle videa.
+        video.parentFile?.listFiles { f -> f.name.startsWith(video.nameWithoutExtension + ".") }?.forEach { it.delete() }
+        video.delete()
     }
 
     /** Po startu aplikace: rozjet, co mělo běžet (WorkManager to většinou drží sám). */

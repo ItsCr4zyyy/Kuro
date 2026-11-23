@@ -97,7 +97,11 @@ fun SettingsScreen(onLogin: () -> Unit) {
                     loggedIn = false
                 }) { Text("Odhlásit") }
             } else {
-                Text("Nepřihlášeno. Hledat jde i bez účtu, přehrávat ne.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Nepřihlášeno. Bez účtu Kuro přehrává z Přehraj.to a Hellspy (max. 1080p). " +
+                        "Webshare účet přidá původní kvalitu (4K, HDR, všechny zvukové stopy).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Button(onClick = onLogin) { Text("Přihlásit") }
             }
         }

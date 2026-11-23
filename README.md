@@ -3,7 +3,7 @@
 > **Soukromý projekt, ve vývoji.** Aplikace vzniká pro vlastní potřebu a pár kamarádů. Zatím neexistuje
 > žádná vydaná verze. Používání je na vlastní riziko.
 
-Nativní Android přehrávač nad **vlastním účtem u úložiště** (Webshare, další zdroje se připravují).
+Nativní Android přehrávač nad **vlastním účtem u úložiště** (Webshare) a zdroji bez přihlášení (Přehraj.to, Hellspy).
 Katalog z veřejných metadat (Cinemeta, Wikidata, AniList), vyhledání zdrojů, přehrávání a stahování
 pro offline sledování.
 
@@ -23,7 +23,8 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 | Přehrávač mpv: gesta, stopy, ASS titulky, navázání, obraz v obraze | ✅ hotovo, ověřeno na emulátoru |
 | Stahování offline: na pozadí, navázání po výpadku, celé sezóny, přehrávání bez internetu | ✅ hotovo, ověřeno na emulátoru |
 | Doporučení podle vkusu (na zařízení), další díl v Pokračovat, kontrola nových dílů | ✅ hotovo |
-| Přehraj.to, anime (AniList, české titulky) | — |
+| Zdroje bez účtu: Přehraj.to, Hellspy (převody do 1080p, titulky, slučování duplicit) | ✅ hotovo, ověřeno na emulátoru |
+| Anime (AniList, české titulky) | — |
 
 ## Plánované funkce
 - Oddělené sekce **Filmy**, **Seriály** (série → epizody) a **Anime**, hledání s diakritikou i bez.
@@ -42,7 +43,7 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 core/                   Rust – logika bez závislosti na Androidu (testuje se `cargo test`)
   kuro-core/
     src/matcher/          parser názvů souborů, detekce jazyků, párování a řazení zdrojů
-    src/providers/        úložiště (Webshare, …)
+    src/providers/        úložiště (Webshare, Přehraj.to, Hellspy)
     src/meta/             Cinemeta, Wikidata
     src/finder.rs         vyhledání zdrojů k titulu/epizodě
     src/storage/          SQLite: katalog ve vrstvách, zájem, vkus, cache zdrojů, knihovna, úklid

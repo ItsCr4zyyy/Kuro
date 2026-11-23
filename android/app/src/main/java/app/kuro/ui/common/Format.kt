@@ -64,6 +64,18 @@ fun StreamInfo.qualityBadges(): List<String> = buildList {
     audioCodec?.let { c -> add(c.uppercase(Locale.ROOT) + (channels?.let { " $it" } ?: "")) }
 }
 
+/**
+ * Zdroj streamuje převod (Přehraj.to/Hellspy): max. 1080p, jedna zvuková
+ * stopa, velikost/tok původního souboru pro stream neplatí.
+ */
+val StreamInfo.isTranscode: Boolean get() = provider != app.kuro.core.Provider.WEBSHARE
+
+fun providerLabel(p: app.kuro.core.Provider): String = when (p) {
+    app.kuro.core.Provider.WEBSHARE -> "Webshare"
+    app.kuro.core.Provider.PREHRAJ_TO -> "Přehraj.to"
+    app.kuro.core.Provider.HELLSPY -> "Hellspy"
+}
+
 /** Zdroj, kterému se dá věřit méně (opakovaně nešel pustit). */
 val StreamInfo.isSuspicious: Boolean get() = failCount >= 2 && okCount == 0
 

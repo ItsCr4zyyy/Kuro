@@ -13,6 +13,7 @@ import app.kuro.core.KuroException
 import app.kuro.core.LinkPurpose
 import app.kuro.core.MediaKind
 import app.kuro.core.PlayLink
+import app.kuro.core.Provider
 import app.kuro.core.ProgressInfo
 import app.kuro.core.StreamInfo
 import app.kuro.core.StreamListener
@@ -20,6 +21,7 @@ import app.kuro.core.TitleDetail
 import app.kuro.data.TokenVault
 import app.kuro.download.Downloads
 import app.kuro.ui.common.isSuspicious
+import app.kuro.ui.common.isTranscode
 import app.kuro.ui.common.BANDWIDTH_HEADROOM
 import app.kuro.ui.common.estimatedBitrate
 import kotlinx.coroutines.Job
@@ -65,6 +67,7 @@ class DetailViewModel(
 
     /** Zdroj má vyšší datový tok, než linka nejspíš zvládne. */
     fun tooHeavy(s: StreamInfo): Boolean {
+        if (s.isTranscode) return false // převody mají pár Mbit/s
         val bw = bandwidthBits ?: return false
         val rate = s.estimatedBitrate(detail?.runtimeMin) ?: return false
         return rate > bw * BANDWIDTH_HEADROOM
@@ -105,7 +108,7 @@ class DetailViewModel(
     /** Stáhnout konkrétní zdroj pro otevřený film/díl. */
     fun download(stream: StreamInfo) {
         val t = target ?: return
-        if (!core.isWebshareLoggedIn()) {
+        if (stream.provider == Provider.WEBSHARE && !core.isWebshareLoggedIn()) {
             event = PlayEvent.NeedLogin
             return
         }
@@ -123,10 +126,6 @@ class DetailViewModel(
     /** Stáhne celou sezónu: ke každému nestaženému dílu nejlepší zdroj. */
     fun downloadSeason(season: Int) {
         val d = detail ?: return
-        if (!core.isWebshareLoggedIn()) {
-            event = PlayEvent.NeedLogin
-            return
-        }
         viewModelScope.launch {
             seasonProgress = "Hledám zdroje…"
             var queued = 0
@@ -137,7 +136,10 @@ class DetailViewModel(
                 val cached = runCatching { core.cachedStreams(titleId, e.season, e.episode) }.getOrNull()
                 val list = if (cached?.isFresh == true) cached.streams
                 else runCatching { core.findStreams(titleId, e.season, e.episode, null) }.getOrDefault(cached?.streams.orEmpty())
-                val best = list.firstOrNull { !it.isSuspicious }
+                // Webshare bez přihlášení stáhnout nejde → první jiný zdroj.
+                val best = list.firstOrNull {
+                    !it.isSuspicious && (it.provider != Provider.WEBSHARE || core.isWebshareLoggedIn())
+                }
                 if (best == null) missing++ else { enqueue(e.season, e.episode, best); queued++ }
             }
             seasonProgress = null
@@ -259,7 +261,8 @@ class DetailViewModel(
 
     fun play(stream: StreamInfo) {
         val t = target ?: return
-        if (!core.isWebshareLoggedIn()) {
+        // Přihlášení potřebuje jen Webshare; Přehraj.to a Hellspy hrají bez účtu.
+        if (stream.provider == Provider.WEBSHARE && !core.isWebshareLoggedIn()) {
             event = PlayEvent.NeedLogin
             return
         }

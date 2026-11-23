@@ -53,6 +53,20 @@ class PlayerActivity : ComponentActivity() {
 
     var inPip by mutableStateOf(false)
         private set
+
+    private var externalSubtitles: List<Triple<String, String, String>> = emptyList()
+    private var subtitlesAdded = false
+
+    /** Titulky stažené vedle videa: "<video>.<jazyk>.<n>.vtt". */
+    private fun localSubtitles(path: String): List<Triple<String, String, String>> {
+        if (!path.startsWith("/")) return emptyList()
+        val video = File(path)
+        val base = video.nameWithoutExtension
+        return video.parentFile?.listFiles { f -> f.name.startsWith("$base.") && f.extension in setOf("vtt", "srt", "ass") }
+            ?.sortedBy { it.name }
+            ?.map { f -> val lang = f.name.removePrefix("$base.").substringBefore('.'); Triple(lang, lang.uppercase(), f.path) }
+            .orEmpty()
+    }
     var reloading by mutableStateOf(false)
         private set
 
@@ -100,6 +114,14 @@ class PlayerActivity : ComponentActivity() {
         var startedRecorded = false
         state.onLoaded = {
             view.mpv.setPropertyBoolean("pause", false)
+            // Titulky od zdroje (Přehraj.to/Hellspy) nebo stažené vedle videa.
+            // Jen nabídnout ("auto"), zapne je výběr jazyka (slang) nebo uživatel.
+            if (!subtitlesAdded) {
+                subtitlesAdded = true
+                externalSubtitles.forEach { (lang, label, u) ->
+                    view.mpv.command("sub-add", u, "auto", label.ifBlank { lang }, lang)
+                }
+            }
             // Přehrávání se rozjelo (online i ze staženého souboru): zájem
             // o titul + jazyková preference + "zdroj funguje". Jednou.
             if (!startedRecorded) {
@@ -114,6 +136,9 @@ class PlayerActivity : ComponentActivity() {
 
         resumePositionSec()?.let { view.mpv.setOptionString("start", it.toString()) }
         view.playFile(url)
+        externalSubtitles = intent.getStringArrayListExtra(EXTRA_SUBS).orEmpty().mapNotNull { line ->
+            line.split('|', limit = 3).takeIf { it.size == 3 }?.let { (lang, label, u) -> Triple(lang, label, u) }
+        } + localSubtitles(url)
 
         setContent {
             KuroTheme {
@@ -321,6 +346,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_URL = "url"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_SUBTITLE = "subtitle"
+        private const val EXTRA_SUBS = "subs"
 
         fun start(
             context: Context,
@@ -332,6 +358,7 @@ class PlayerActivity : ComponentActivity() {
             url: String,
             title: String,
             subtitle: String?,
+            subtitles: List<app.kuro.core.SubtitleInfo> = emptyList(),
         ) {
             context.startActivity(
                 Intent(context, PlayerActivity::class.java)
@@ -342,7 +369,11 @@ class PlayerActivity : ComponentActivity() {
                     .putExtra(EXTRA_IDENT, ident)
                     .putExtra(EXTRA_URL, url)
                     .putExtra(EXTRA_TITLE, title)
-                    .putExtra(EXTRA_SUBTITLE, subtitle),
+                    .putExtra(EXTRA_SUBTITLE, subtitle)
+                    .putStringArrayListExtra(
+                        EXTRA_SUBS,
+                        ArrayList(subtitles.map { "${it.lang}|${it.label.replace('|', ' ')}|${it.url}" }),
+                    ),
             )
         }
     }

@@ -43,6 +43,8 @@ pub struct KuroCore {
     cinemeta: Cinemeta,
     wikidata: Wikidata,
     webshare: Arc<Webshare>,
+    /// Všichni provideři (Webshare, Přehraj.to, Hellspy) pro přehrání podle id.
+    providers: Vec<Arc<dyn kuro_core::providers::Provider>>,
     finder: StreamFinder,
 }
 
@@ -62,12 +64,19 @@ impl KuroCore {
     pub fn new(db_path: String, device_id: String) -> Result<Arc<Self>> {
         let http = kuro_core::http::client();
         let webshare = Arc::new(Webshare::new(http.clone(), device_id));
-        let finder = StreamFinder::new(vec![webshare.clone()], FinderConfig::default());
+        // Zdroje bez přihlášení: Přehraj.to (HTML) a Hellspy (JSON API).
+        let providers: Vec<Arc<dyn kuro_core::providers::Provider>> = vec![
+            webshare.clone(),
+            Arc::new(kuro_core::providers::PrehrajTo::new(http.clone())),
+            Arc::new(kuro_core::providers::Hellspy::new(http.clone())),
+        ];
+        let finder = StreamFinder::new(providers.clone(), FinderConfig::default());
         Ok(Arc::new(Self {
             db: Db::open(db_path)?,
             cinemeta: Cinemeta::new(http.clone()),
             wikidata: Wikidata::new(http),
             webshare,
+            providers,
             finder,
         }))
     }
@@ -270,7 +279,12 @@ impl KuroCore {
             return Err(report.errors[0].1.clone().into());
         }
 
-        self.db.save_streams(tgt, &report.streams)?;
+        // Statistiky přehrání dřív než slučování: z kopií stejného souboru
+        // má zůstat ta, která jde pustit.
+        let mut streams = report.streams;
+        self.db.attach_stats(&mut streams)?;
+        let streams = kuro_core::finder::collapse_duplicates(streams);
+        self.db.save_streams(tgt, &streams)?;
         let cached = self.db.cached_streams(tgt)?;
         Ok(cached.streams.iter().map(StreamInfo::from).collect())
     }
@@ -279,8 +293,18 @@ impl KuroCore {
     /// vázaný na účet a IP a vyprší.
     pub async fn resolve_stream(&self, provider: Provider, ident: String, purpose: LinkPurpose) -> Result<PlayLink> {
         let p: kuro_core::providers::ProviderId = provider.into();
-        match self.webshare.resolve(&ident, purpose.into()).await {
-            Ok(link) => Ok(PlayLink { url: link.url, headers: link.headers.into_iter().collect(), expires_at_ms: link.expires_at_ms }),
+        let prov = self.providers.iter().find(|x| x.id() == p).ok_or(KuroError::NotFound)?;
+        match prov.resolve(&ident, purpose.into()).await {
+            Ok(link) => Ok(PlayLink {
+                url: link.url,
+                headers: link.headers.into_iter().collect(),
+                expires_at_ms: link.expires_at_ms,
+                subtitles: link
+                    .subtitles
+                    .into_iter()
+                    .map(|s| SubtitleInfo { lang: s.lang, label: s.label, url: s.url })
+                    .collect(),
+            }),
             Err(e) => {
                 // Soubor zmizel → započítat selhání, ať v řazení klesne.
                 if matches!(e, kuro_core::Error::Provider { .. }) {
