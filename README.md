@@ -58,3 +58,7 @@ Android část zatím neexistuje.
 - Kuro není spojené s Webshare, Stremiem, Wikidaty, AniListem ani jinou službou.
 - Logika párování souborů vychází z projektu NSC.
 - K přehrávání je potřeba vlastní účet u úložiště. Kuro nic nehostuje ani neproxuje.
+
+## Licence
+
+[GPL-3.0](LICENSE)

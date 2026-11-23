@@ -5,7 +5,7 @@ members = ["kuro-core"]
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
-license = "MIT"
+license = "GPL-3.0-only"
 
 [workspace.dependencies]
 regex = "1"
