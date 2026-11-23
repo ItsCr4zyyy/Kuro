@@ -48,6 +48,7 @@ import app.kuro.core.KuroException
 import app.kuro.core.MediaKind
 import app.kuro.core.TitleCard
 import app.kuro.core.UserEvent
+import app.kuro.data.ContentKind
 import app.kuro.kuroApp
 import app.kuro.ui.common.Message
 import app.kuro.ui.common.PosterCard
@@ -132,6 +133,9 @@ class SearchViewModel(private val core: KuroCore) : ViewModel() {
 fun SearchScreen(onOpen: (Long) -> Unit) {
     val core = kuroApp().core
     val vm: SearchViewModel = viewModel { SearchViewModel(core) }
+    val settings = kuroApp().settings
+    // Skryté druhy obsahu (nastavení) se ve výsledcích neukazují.
+    val shown = vm.results.filter { settings.shows(it.kind, it.anime) }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val gridState = rememberLazyGridState()
@@ -161,9 +165,14 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(16.dp, 12.dp, 16.dp, 4.dp),
         )
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val hidden = settings.hiddenContent
             FilterChip(vm.kind == null, { vm.selectKind(null) }, { Text("Vše") })
-            FilterChip(vm.kind == MediaKind.MOVIE, { vm.selectKind(MediaKind.MOVIE) }, { Text("Filmy") })
-            FilterChip(vm.kind == MediaKind.SERIES, { vm.selectKind(MediaKind.SERIES) }, { Text("Seriály") })
+            if (ContentKind.MOVIES !in hidden) {
+                FilterChip(vm.kind == MediaKind.MOVIE, { vm.selectKind(MediaKind.MOVIE) }, { Text("Filmy") })
+            }
+            if (ContentKind.SERIES !in hidden || ContentKind.ANIME !in hidden) {
+                FilterChip(vm.kind == MediaKind.SERIES, { vm.selectKind(MediaKind.SERIES) }, { Text("Seriály") })
+            }
         }
         if (vm.searching) {
             LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
@@ -172,7 +181,7 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
         when {
             vm.query.isBlank() -> RecentSearches(vm.recent, onPick = { vm.onQuery(it); vm.submit() }, onClear = vm::clearRecent)
             vm.error != null -> Message(vm.error!!)
-            vm.results.isEmpty() && vm.searchedFor == vm.query && !vm.searching ->
+            shown.isEmpty() && vm.searchedFor == vm.query && !vm.searching ->
                 Message("Nic nenalezeno. Zkus originální název.", icon = Icons.Outlined.SearchOff)
             else -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(110.dp),
@@ -182,7 +191,7 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
                 state = gridState,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(vm.results, key = { it.id }) { card ->
+                items(shown, key = { it.id }) { card ->
                     PosterCard(card, onClick = {
                         hideKeyboard()
                         vm.clicked(card)

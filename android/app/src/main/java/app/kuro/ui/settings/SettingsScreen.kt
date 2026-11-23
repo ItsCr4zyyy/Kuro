@@ -39,6 +39,7 @@ import app.kuro.core.DownloadStatus
 import app.kuro.ui.common.formatSize
 import app.kuro.core.KuroException
 import app.kuro.core.Provider
+import app.kuro.data.ContentKind
 import app.kuro.data.Settings
 import app.kuro.data.TokenVault
 import app.kuro.kuroApp
@@ -138,6 +139,28 @@ fun SettingsScreen(onLogin: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+        }
+
+        Group("Obsah") {
+            var hidden by remember { mutableStateOf(app.settings.hiddenContent) }
+            Text(
+                "Co se má ukazovat na domovské stránce, v hledání a v doporučeních. " +
+                    "Rozkoukané a oblíbené zůstanou v Knihovně.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ContentKind.entries.forEach { c ->
+                val on = c !in hidden
+                // Poslední zapnutý druh vypnout nejde.
+                val last = on && hidden.size == ContentKind.entries.size - 1
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(c.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = on, enabled = !last, onCheckedChange = { v ->
+                        hidden = if (v) hidden - c else hidden + c
+                        app.settings.hiddenContent = hidden
+                    })
+                }
             }
         }
 

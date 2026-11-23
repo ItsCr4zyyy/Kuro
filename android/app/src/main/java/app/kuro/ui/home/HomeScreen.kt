@@ -59,6 +59,8 @@ import app.kuro.core.KuroException
 import app.kuro.core.MediaKind
 import app.kuro.core.TitleCard
 import app.kuro.core.AnimeCatalog
+import app.kuro.data.ContentKind
+import app.kuro.data.Settings
 import app.kuro.kuroApp
 import app.kuro.ui.common.Message
 import app.kuro.ui.common.PosterCard
@@ -71,6 +73,15 @@ import kotlinx.coroutines.launch
 
 /** Vše = domov (pokračování a doporučení ze všeho); ostatní = jen daný druh. */
 enum class Section(val label: String) { ALL("Vše"), MOVIES("Filmy"), SERIES("Seriály"), ANIME("Anime") }
+
+/** Druh obsahu sekce (pro skrytí v nastavení). */
+private val Section.content: ContentKind?
+    get() = when (this) {
+        Section.ALL -> null
+        Section.MOVIES -> ContentKind.MOVIES
+        Section.SERIES -> ContentKind.SERIES
+        Section.ANIME -> ContentKind.ANIME
+    }
 
 /** Patří titul do sekce? */
 private fun Section.accepts(kind: MediaKind, anime: Boolean): Boolean = when (this) {
@@ -116,7 +127,16 @@ private fun rowsFor(section: Section): List<RowSpec> = when (section) {
     )
 }
 
-class HomeViewModel(private val core: KuroCore) : ViewModel() {
+class HomeViewModel(private val core: KuroCore, private val settings: Settings) : ViewModel() {
+    /** Skryté druhy obsahu z nastavení; při změně se domov načte znovu. */
+    private var hidden = settings.hiddenContent
+
+    /** Sekce v přepínači: "Vše" a neskryté druhy. */
+    val sections: List<Section>
+        get() = Section.entries.filter { it.content == null || it.content !in hidden }
+
+    private fun visible(kind: MediaKind, anime: Boolean) = settings.shows(kind, anime)
+
     var section by mutableStateOf(Section.ALL)
         private set
     var rows by mutableStateOf<List<Pair<String, List<TitleCard>>>>(emptyList())
@@ -135,11 +155,13 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
 
     /** Doporučení pro aktuální sekci. */
     val forYou: List<TitleCard>
-        get() = recs.filter { section.accepts(it.kind, it.anime) }
+        get() = recs.filter { section.accepts(it.kind, it.anime) && visible(it.kind, it.anime) }
 
     /** Rozkoukané pro aktuální sekci (ve "Vše" všechno). */
     val continueShown: List<ContinueItem>
-        get() = continueItems.filter { section.accepts(it.title.kind, it.title.anime) }
+        get() = continueItems.filter {
+            section.accepts(it.title.kind, it.title.anime) && visible(it.title.kind, it.title.anime)
+        }
 
     private var computingRecs = false
 
@@ -195,6 +217,16 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
         load()
     }
 
+    /** Po návratu z nastavení: změnily se skryté druhy → znovu načíst. */
+    fun checkSettings() {
+        val now = settings.hiddenContent
+        if (now == hidden) return
+        hidden = now
+        if (section !in sections) section = Section.ALL
+        rows = emptyList()
+        load()
+    }
+
     fun refreshLocal() {
         loadRecs()
         continueItems = runCatching { core.continueWatching(20) }.getOrDefault(emptyList())
@@ -206,7 +238,10 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
         val current = section
         viewModelScope.launch {
             loading = true
-            val results = rowsFor(current).map { spec ->
+            val results = rowsFor(current).filter { spec ->
+                // Ve "Vše" jen řady neskrytých druhů.
+                visible(spec.kind, spec.anime != null)
+            }.map { spec ->
                 async {
                     try {
                         spec.title to (
@@ -219,7 +254,10 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
                 }
             }.awaitAll()
             if (section == current) {
+                // Cinemeta řady filmů/seriálů občas obsahují anime — skrýt podle nastavení.
                 rows = results.filterNotNull()
+                    .map { (t, cards) -> t to cards.filter { visible(it.kind, it.anime) } }
+                    .filter { it.second.isNotEmpty() }
                 offline = results.all { it == null }
             }
             loading = false
@@ -237,9 +275,11 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
 @Composable
 fun HomeScreen(onOpen: (Long) -> Unit) {
     val core = kuroApp().core
-    val vm: HomeViewModel = viewModel { HomeViewModel(core) }
+    val settings = kuroApp().settings
+    val vm: HomeViewModel = viewModel { HomeViewModel(core, settings) }
 
     LifecycleResumeEffect(Unit) {
+        vm.checkSettings()
         vm.refreshLocal()
         onPauseOrDispose {}
     }
@@ -250,6 +290,7 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
                 Hero(
                     card = vm.featured,
                     section = vm.section,
+                    sections = vm.sections,
                     inWatchlist = vm.featured?.id?.let { it in vm.watchlistIds } == true,
                     onSelect = vm::select,
                     onOpen = onOpen,
@@ -318,6 +359,7 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
 private fun Hero(
     card: TitleCard?,
     section: Section,
+    sections: List<Section>,
     inWatchlist: Boolean,
     onSelect: (Section) -> Unit,
     onOpen: (Long) -> Unit,
@@ -349,7 +391,7 @@ private fun Hero(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Image(painterResource(R.drawable.ic_kuro_mark), contentDescription = "Kuro", modifier = Modifier.size(44.dp))
-            Section.entries.forEach { s ->
+            sections.forEach { s ->
                 FilterChip(
                     selected = section == s,
                     onClick = { onSelect(s) },
