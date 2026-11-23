@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -136,9 +139,13 @@ private fun TvPicker(onDismiss: () -> Unit) {
     )
 }
 
-/** Ovladač dole nad navigací, když něco hraje na televizi. */
+/**
+ * Ovladač dole nad navigací, když je připojená televize.
+ * [aboveSystemBar]: pod lištou není navigace aplikace (detail) → odsadit
+ * od systémových tlačítek / gesta, jinak by "Zastavit" padlo na "Domů".
+ */
 @Composable
-fun TvMiniBar() {
+fun TvMiniBar(aboveSystemBar: Boolean = false) {
     val tv = kuroApp().tv
     val context = LocalContext.current
     LaunchedEffect(tv.error) {
@@ -147,7 +154,8 @@ fun TvMiniBar() {
     val device = tv.connected ?: return
     val media = tv.nowPlaying
     Surface(tonalElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        val insets = if (aboveSystemBar) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier
+        Column(insets.padding(horizontal = 12.dp, vertical = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.CastConnected, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import app.kuro.core.KuroException
+import app.kuro.core.Provider
 import app.kuro.data.TokenVault
 import app.kuro.kuroApp
 import kotlinx.coroutines.launch
@@ -60,6 +61,9 @@ fun LoginScreen(onDone: () -> Unit) {
             try {
                 val token = app.core.webshareLogin(user.trim(), pass)
                 app.vault.save(TokenVault.WEBSHARE, token)
+                // Kdo se přihlásí, chce Webshare používat → zapnout zdroj.
+                app.settings.disabledProviders = app.settings.disabledProviders - Provider.WEBSHARE
+                app.core.setDisabledProviders(app.settings.disabledProviders.toList())
                 pass = ""
                 onDone()
             } catch (e: KuroException) {

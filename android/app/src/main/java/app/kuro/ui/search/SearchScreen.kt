@@ -20,12 +20,15 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,10 +60,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
+/** Filtr hledání. Anime má vlastní hledání přes AniList (i podle romaji). */
+enum class SearchFilter(val label: String, val kind: MediaKind?) {
+    ALL("Vše", null), MOVIES("Filmy", MediaKind.MOVIE), SERIES("Seriály", MediaKind.SERIES), ANIME("Anime", null);
+
+    fun accepts(c: TitleCard): Boolean = when (this) {
+        ALL -> true
+        MOVIES -> c.kind == MediaKind.MOVIE && !c.anime
+        SERIES -> c.kind == MediaKind.SERIES && !c.anime
+        ANIME -> c.anime
+    }
+}
+
 class SearchViewModel(private val core: KuroCore) : ViewModel() {
     var query by mutableStateOf("")
         private set
-    var kind by mutableStateOf<MediaKind?>(null)
+    var filter by mutableStateOf(SearchFilter.ALL)
         private set
     var results by mutableStateOf<List<TitleCard>>(emptyList())
         private set
@@ -85,7 +100,7 @@ class SearchViewModel(private val core: KuroCore) : ViewModel() {
             return
         }
         // Okamžitě z lokální databáze, po chvíli psaní z Cinemety.
-        results = runCatching { core.searchLocal(q, kind, 20) }.getOrDefault(emptyList())
+        results = runCatching { core.searchLocal(q, filter.kind, 20) }.getOrDefault(emptyList())
         job = viewModelScope.launch {
             delay(450)
             remote(q)
@@ -97,8 +112,8 @@ class SearchViewModel(private val core: KuroCore) : ViewModel() {
         if (query.isNotBlank()) job = viewModelScope.launch { remote(query) }
     }
 
-    fun selectKind(k: MediaKind?) {
-        kind = k
+    fun select(f: SearchFilter) {
+        filter = f
         if (query.isNotBlank()) onQuery(query)
     }
 
@@ -115,7 +130,7 @@ class SearchViewModel(private val core: KuroCore) : ViewModel() {
         searching = true
         error = null
         try {
-            val found = core.search(q, kind)
+            val found = if (filter == SearchFilter.ANIME) core.searchAnime(q) else core.search(q, filter.kind)
             // Lokální napovídání, které Cinemeta nevrátila (třeba české názvy), nechat navrchu.
             val local = results.filter { l -> found.none { it.id == l.id } }
             results = local + found
@@ -135,7 +150,7 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
     val vm: SearchViewModel = viewModel { SearchViewModel(core) }
     val settings = kuroApp().settings
     // Skryté druhy obsahu (nastavení) se ve výsledcích neukazují.
-    val shown = vm.results.filter { settings.shows(it.kind, it.anime) }
+    val shown = vm.results.filter { settings.shows(it.kind, it.anime) && vm.filter.accepts(it) }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val gridState = rememberLazyGridState()
@@ -149,7 +164,7 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        OutlinedTextField(
+        TextField(
             value = vm.query,
             onValueChange = vm::onQuery,
             placeholder = { Text("Film, seriál, anime…") },
@@ -162,16 +177,27 @@ fun SearchScreen(onOpen: (Long) -> Unit) {
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { vm.submit(); hideKeyboard() }),
-            modifier = Modifier.fillMaxWidth().padding(16.dp, 12.dp, 16.dp, 4.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = TextFieldDefaults.colors(
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
+            modifier = Modifier.fillMaxWidth().padding(16.dp, 12.dp, 16.dp, 8.dp),
         )
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val hidden = settings.hiddenContent
-            FilterChip(vm.kind == null, { vm.selectKind(null) }, { Text("Vše") })
-            if (ContentKind.MOVIES !in hidden) {
-                FilterChip(vm.kind == MediaKind.MOVIE, { vm.selectKind(MediaKind.MOVIE) }, { Text("Filmy") })
-            }
-            if (ContentKind.SERIES !in hidden || ContentKind.ANIME !in hidden) {
-                FilterChip(vm.kind == MediaKind.SERIES, { vm.selectKind(MediaKind.SERIES) }, { Text("Seriály") })
+            SearchFilter.entries.filter {
+                when (it) {
+                    SearchFilter.ALL -> true
+                    SearchFilter.MOVIES -> ContentKind.MOVIES !in hidden
+                    SearchFilter.SERIES -> ContentKind.SERIES !in hidden
+                    SearchFilter.ANIME -> ContentKind.ANIME !in hidden
+                }
+            }.forEach { f ->
+                FilterChip(vm.filter == f, { vm.select(f) }, { Text(f.label) })
             }
         }
         if (vm.searching) {

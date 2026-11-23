@@ -57,7 +57,7 @@ fun KuroRoot() {
         bottomBar = {
             androidx.compose.foundation.layout.Column {
             // Ovladač televize (jen když je připojená).
-            app.kuro.ui.tv.TvMiniBar()
+            app.kuro.ui.tv.TvMiniBar(aboveSystemBar = !showBar)
             if (showBar) {
                 NavigationBar {
                     Tab.entries.forEach { tab ->

@@ -183,7 +183,22 @@ impl KuroCore {
                 cards.push(c);
             }
         }
+        // Karty z Cinemety znovu z databáze: AniList mohl titul právě označit jako anime.
+        let cards = cards.iter().filter_map(|c| self.db.title(c.id).ok().flatten()).map(|t| TitleCard::from(&t)).collect();
         Ok(rank_by_name(cards, q))
+    }
+
+    /// Hledání jen anime (AniList, i podle romaji). Bez časového limitu —
+    /// uživatel výslovně chce anime, tak se počká i na Wikidata.
+    pub async fn search_anime(&self, query: String) -> Result<Vec<TitleCard>> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        self.db.add_recent_search(q)?;
+        let medias = self.anilist.search(q).await?;
+        let metas = kuro_core::meta::resolve_anime(&medias, &self.wikidata, &self.cinemeta).await;
+        Ok(rank_by_name(self.store_anime(metas)?, q))
     }
 
     /// Okamžité napovídání z lokální databáze (bez sítě).

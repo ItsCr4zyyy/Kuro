@@ -20,12 +20,12 @@ APK je v [GitHub Releases](https://github.com/ItsCr4zyyy/Kuro/releases/latest) (
 **Katalog a hledání**
 - Domovská stránka se sekcemi Vše, Filmy, Seriály a Anime; řady populárních, nových a nejlépe hodnocených titulů.
 - Anime z AniListu: trendy, aktuální sezóna, nejlépe hodnocené, nejoblíbenější, filmy.
-- Hledání s diakritikou i bez, české názvy z Wikidat, anime i podle japonského názvu (romaji).
-- Druhy obsahu, které nechceš (třeba filmy), jde v nastavení skrýt.
+- Hledání s diakritikou i bez, filtr Filmy / Seriály / Anime, české názvy z Wikidat, anime i podle japonského názvu (romaji).
+- Druhy obsahu jde v nastavení zapnout a skrýt; anime je ve výchozím stavu vypnuté.
 
 **Zdroje**
 - Přehraj.to a Hellspy bez účtu (převody do 1080p, titulky od zdroje), Webshare s účtem.
-- Každý zdroj jde v nastavení vypnout.
+- Každý zdroj jde v nastavení zapnout a vypnout. Webshare je ve výchozím stavu vypnutý, zapne se přihlášením.
 - Párování souborů podle názvu, roku, sezóny a dílu (i české a romaji názvy), kontrola délky,
   detekce dabingu a titulků. Stejné soubory nahrané víckrát se slučují.
 - Zdroje, které opakovaně nejdou pustit, klesají v pořadí.

@@ -37,15 +37,17 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_WIFI_ONLY, true)
         set(v) = prefs.edit { putBoolean(KEY_WIFI_ONLY, v) }
 
-    /** Zdroje vypnuté v nastavení (výchozí žádný — všechny se prohledávají). */
+    /** Zdroje vypnuté v nastavení. */
     var disabledProviders: Set<Provider>
-        get() = prefs.getStringSet(KEY_DISABLED_PROVIDERS, emptySet()).orEmpty()
+        // Výchozí: Webshare vypnutý (potřebuje účet) — zapne se v nastavení nebo přihlášením.
+        get() = prefs.getStringSet(KEY_DISABLED_PROVIDERS, setOf(Provider.WEBSHARE.name)).orEmpty()
             .mapNotNull { n -> Provider.entries.find { it.name == n } }.toSet()
         set(v) = prefs.edit { putStringSet(KEY_DISABLED_PROVIDERS, v.map { it.name }.toSet()) }
 
     /** Druhy obsahu, které uživatel nechce vidět (domov, hledání, doporučení). */
     var hiddenContent: Set<ContentKind>
-        get() = prefs.getStringSet(KEY_HIDDEN_CONTENT, emptySet()).orEmpty()
+        // Výchozí: anime skryté — kdo chce, zapne si ho v nastavení.
+        get() = prefs.getStringSet(KEY_HIDDEN_CONTENT, setOf(ContentKind.ANIME.name)).orEmpty()
             .mapNotNull { n -> ContentKind.entries.find { it.name == n } }.toSet()
         set(v) = prefs.edit { putStringSet(KEY_HIDDEN_CONTENT, v.map { it.name }.toSet()) }
 
