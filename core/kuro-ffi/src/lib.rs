@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use kuro_core::finder::{FinderConfig, StreamFinder};
 use kuro_core::matcher::MatchTarget;
-use kuro_core::meta::{CatalogId, Cinemeta, Wikidata};
+use kuro_core::meta::{AniList, CatalogId, Cinemeta, Wikidata};
 use kuro_core::providers::{Provider as _, Webshare};
 use kuro_core::storage::{Budget, Db, Event, StoredTitle, Target, DAY_MS};
 
@@ -42,6 +42,7 @@ pub struct KuroCore {
     db: Db,
     cinemeta: Cinemeta,
     wikidata: Wikidata,
+    anilist: AniList,
     webshare: Arc<Webshare>,
     /// Všichni provideři (Webshare, Přehraj.to, Hellspy) pro přehrání podle id.
     providers: Vec<Arc<dyn kuro_core::providers::Provider>>,
@@ -74,6 +75,7 @@ impl KuroCore {
         Ok(Arc::new(Self {
             db: Db::open(db_path)?,
             cinemeta: Cinemeta::new(http.clone()),
+            anilist: AniList::new(http.clone()),
             wikidata: Wikidata::new(http),
             webshare,
             providers,
@@ -124,6 +126,14 @@ impl KuroCore {
         self.store_cards(&metas)
     }
 
+    /// Řada záložky Anime z AniListu (30 položek na stránku, `page` od 1).
+    /// Jen anime, které má protějšek na IMDb (kvůli epizodám a zdrojům).
+    pub async fn anime_catalog(&self, catalog: AnimeCatalog, page: i32) -> Result<Vec<TitleCard>> {
+        let medias = self.anilist.list(catalog.into(), page.max(1) as u32).await?;
+        let metas = kuro_core::meta::resolve_anime(&medias, &self.wikidata, &self.cinemeta).await;
+        self.store_anime(metas)
+    }
+
     /// Hledání přes Cinemetu (oba typy, když `kind` chybí). Výsledky se uloží
     /// jako krátkodobé karty; české názvy doplní `localize`.
     pub async fn search(&self, query: String, kind: Option<MediaKind>) -> Result<Vec<TitleCard>> {
@@ -133,7 +143,17 @@ impl KuroCore {
         }
         self.db.add_recent_search(q)?;
 
-        let metas = match kind {
+        // AniList souběžně: najde i romaji ("sousou no frieren") a doplní
+        // anime názvy pro párování. Pomalé Wikidata nesmí brzdit hledání.
+        let anime = async {
+            let fut = async {
+                let medias = self.anilist.search(q).await.ok()?;
+                Some(kuro_core::meta::resolve_anime(&medias, &self.wikidata, &self.cinemeta).await)
+            };
+            tokio::time::timeout(std::time::Duration::from_secs(4), fut).await.ok().flatten().unwrap_or_default()
+        };
+        let cinemeta = async {
+            Ok::<_, KuroError>(match kind {
             Some(k) => self.cinemeta.search(k.into(), q).await?,
             None => {
                 let (movies, series) = tokio::join!(
@@ -147,8 +167,22 @@ impl KuroCore {
                 };
                 interleave(movies, series)
             }
+            })
         };
-        let cards = self.store_cards(&metas)?;
+        let (metas, anime) = tokio::join!(cinemeta, anime);
+        let anime: Vec<_> = anime.into_iter().filter(|m| kind.is_none_or(|k| m.kind == k.into())).collect();
+        let metas = match metas {
+            Ok(m) => m,
+            Err(e) if anime.is_empty() => return Err(e),
+            Err(_) => vec![],
+        };
+        let mut cards = self.store_cards(&metas)?;
+        // Anime z AniListu: aliasy uložit vždy, kartu přidat, jen když chybí.
+        for c in self.store_anime(anime)? {
+            if !cards.iter().any(|x| x.id == c.id) {
+                cards.push(c);
+            }
+        }
         Ok(rank_by_name(cards, q))
     }
 
@@ -203,6 +237,19 @@ impl KuroCore {
         if stored.localized_at.is_none() {
             if let Ok(loc) = self.wikidata.localized_title(&stored.meta.imdb_id).await {
                 self.db.apply_localized(title_id, loc.as_ref())?;
+            }
+        }
+        // Anime: romaji a další názvy z AniListu (soubory se tak často jmenují).
+        let is_anime = self.db.title(title_id)?.is_some_and(|t| t.meta.anime);
+        if is_anime && (stale || stored.localized_at.is_none()) {
+            if let Ok(ids) = self.wikidata.anilist_ids(&stored.meta.imdb_id).await {
+                if let Ok(medias) = self.anilist.by_ids(&ids).await {
+                    let names: Vec<String> = medias
+                        .iter()
+                        .flat_map(|m| std::iter::once(kuro_core::meta::anilist::strip_season(m.title())).chain(m.names("")))
+                        .collect();
+                    self.db.add_aliases(title_id, &names)?;
+                }
             }
         }
 
@@ -582,6 +629,26 @@ impl KuroCore {
 }
 
 impl KuroCore {
+    /// Uloží anime z AniListu. U titulu, který už známe z Cinemety, nechá
+    /// jeho název a pozadí (AniList banner je úzký pruh) a jen přidá aliasy.
+    fn store_anime(&self, mut metas: Vec<kuro_core::meta::TitleMeta>) -> Result<Vec<TitleCard>> {
+        for m in &mut metas {
+            if let Some(t) = self.db.title_by_imdb(m.kind, &m.imdb_id)? {
+                if t.detail_at.is_some() {
+                    let ani = std::mem::replace(&mut m.title_orig, t.meta.title_orig.clone());
+                    m.aliases.push(ani);
+                    if t.meta.background.is_some() {
+                        m.background = None;
+                    }
+                    if t.meta.year.is_some() {
+                        m.year = None;
+                    }
+                }
+            }
+        }
+        self.store_cards(&metas)
+    }
+
     fn store_cards(&self, metas: &[kuro_core::meta::TitleMeta]) -> Result<Vec<TitleCard>> {
         let ids = self.db.upsert_cards(metas)?;
         Ok(ids.iter().filter_map(|id| self.db.title(*id).ok().flatten()).map(|t| TitleCard::from(&t)).collect())

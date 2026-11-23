@@ -136,6 +136,16 @@ pub fn episode_queries(t: &MatchTarget, season: u16, episode: u16) -> Vec<String
         out.push(format!("{sub} {tag}"));
     }
     out.push(format!("{orig} {season}x{episode:02}"));
+    // Další názvy (romaji z AniListu, slovenský…): dva nejkratší — krátký
+    // název ("Frieren") najde i soubory s dlouhým českým podtitulem.
+    let mut aliases: Vec<&str> = t.aliases.iter().map(|a| a.trim()).filter(|a| a.chars().count() >= 3).collect();
+    aliases.sort_by_key(|a| a.chars().count());
+    for a in aliases.into_iter().take(2) {
+        let q = format!("{a} {tag}");
+        if !out.iter().any(|o| o.eq_ignore_ascii_case(&q)) {
+            out.push(q);
+        }
+    }
     out
 }
 
@@ -432,7 +442,7 @@ mod tests {
         t.kind = MediaKind::Series;
         assert_eq!(
             episode_queries(&t, 1, 2),
-            vec!["Dune: Part Two S01E02", "Duna: Část druhá S01E02", "Dune: Part Two 1x02"]
+            vec!["Dune: Part Two S01E02", "Duna: Část druhá S01E02", "Dune: Part Two 1x02", "Duna 2 S01E02"]
         );
     }
 

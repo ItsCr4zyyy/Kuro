@@ -1,11 +1,13 @@
 //! Metadata katalogu: Cinemeta (katalog, detail, epizody) a Wikidata
-//! (české/slovenské názvy). AniList pro anime přibude později.
+//! (české/slovenské názvy, převod AniList → IMDb) a AniList (anime).
 
+pub mod anilist;
 pub mod cinemeta;
 pub mod wikidata;
 
+pub use anilist::{resolve_titles as resolve_anime, AniList, AniMedia, AnimeList};
 pub use cinemeta::{CatalogId, Cinemeta};
-pub use wikidata::{LocalizedTitles, Wikidata};
+pub use wikidata::{AniMapping, LocalizedTitles, Wikidata};
 
 use crate::matcher::MediaKind;
 

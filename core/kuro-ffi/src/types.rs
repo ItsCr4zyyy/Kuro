@@ -38,6 +38,28 @@ pub enum Catalog {
     New,
 }
 
+/// Řady záložky Anime (AniList).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AnimeCatalog {
+    Trending,
+    Season,
+    Popular,
+    TopRated,
+    Movies,
+}
+
+impl From<AnimeCatalog> for kuro_core::meta::AnimeList {
+    fn from(c: AnimeCatalog) -> Self {
+        match c {
+            AnimeCatalog::Trending => Self::Trending,
+            AnimeCatalog::Season => Self::Season,
+            AnimeCatalog::Popular => Self::Popular,
+            AnimeCatalog::TopRated => Self::TopRated,
+            AnimeCatalog::Movies => Self::Movies,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum Provider {
     Webshare,

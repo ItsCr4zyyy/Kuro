@@ -58,6 +58,7 @@ import app.kuro.core.KuroCore
 import app.kuro.core.KuroException
 import app.kuro.core.MediaKind
 import app.kuro.core.TitleCard
+import app.kuro.core.AnimeCatalog
 import app.kuro.kuroApp
 import app.kuro.ui.common.Message
 import app.kuro.ui.common.PosterCard
@@ -70,12 +71,16 @@ import kotlinx.coroutines.launch
 
 enum class Section(val label: String) { MOVIES("Filmy"), SERIES("Seriály"), ANIME("Anime") }
 
-private data class RowSpec(val title: String, val kind: MediaKind, val catalog: Catalog, val genre: String? = null)
+private data class RowSpec(
+    val title: String,
+    val kind: MediaKind,
+    val catalog: Catalog,
+    val genre: String? = null,
+    /** Řada z AniListu místo Cinemety. */
+    val anime: AnimeCatalog? = null,
+)
 
-/**
- * Anime zatím = žánr "Animation" z Cinemety (zahrnuje i neanime animaci).
- * Přesné anime přijde s AniListem.
- */
+/** Anime = AniList (jen tituly s protějškem na IMDb, kvůli epizodám a zdrojům). */
 private fun rowsFor(section: Section): List<RowSpec> = when (section) {
     Section.MOVIES -> listOf(
         RowSpec("Populární filmy", MediaKind.MOVIE, Catalog.POPULAR),
@@ -88,9 +93,11 @@ private fun rowsFor(section: Section): List<RowSpec> = when (section) {
         RowSpec("Doporučené", MediaKind.SERIES, Catalog.TOP_RATED),
     )
     Section.ANIME -> listOf(
-        RowSpec("Animované seriály", MediaKind.SERIES, Catalog.POPULAR, "Animation"),
-        RowSpec("Animované filmy", MediaKind.MOVIE, Catalog.POPULAR, "Animation"),
-        RowSpec("Doporučené", MediaKind.SERIES, Catalog.TOP_RATED, "Animation"),
+        RowSpec("Teď populární", MediaKind.SERIES, Catalog.POPULAR, anime = AnimeCatalog.TRENDING),
+        RowSpec("Tato sezóna", MediaKind.SERIES, Catalog.NEW, anime = AnimeCatalog.SEASON),
+        RowSpec("Nejlépe hodnocené", MediaKind.SERIES, Catalog.TOP_RATED, anime = AnimeCatalog.TOP_RATED),
+        RowSpec("Nejoblíbenější", MediaKind.SERIES, Catalog.POPULAR, anime = AnimeCatalog.POPULAR),
+        RowSpec("Anime filmy", MediaKind.MOVIE, Catalog.POPULAR, anime = AnimeCatalog.MOVIES),
     )
 }
 
@@ -117,7 +124,7 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
             when (section) {
                 Section.MOVIES -> it.kind == MediaKind.MOVIE && !it.anime
                 Section.SERIES -> it.kind == MediaKind.SERIES && !it.anime
-                Section.ANIME -> it.anime || "Animation" in it.genres
+                Section.ANIME -> it.anime
             }
         }
 
@@ -187,7 +194,10 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
             val results = rowsFor(current).map { spec ->
                 async {
                     try {
-                        spec.title to core.catalog(spec.kind, spec.catalog, spec.genre, 0)
+                        spec.title to (
+                            spec.anime?.let { core.animeCatalog(it, 1) }
+                                ?: core.catalog(spec.kind, spec.catalog, spec.genre, 0)
+                            )
                     } catch (e: KuroException) {
                         null
                     }
@@ -277,7 +287,7 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
             if (vm.section == Section.ANIME && vm.rows.isNotEmpty()) {
                 item {
                     Text(
-                        "Zatím podle žánru Animace. Přesný anime katalog přijde s AniListem.",
+                        "Anime katalog z AniListu.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),

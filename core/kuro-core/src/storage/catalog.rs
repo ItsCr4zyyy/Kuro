@@ -111,6 +111,11 @@ pub(crate) fn title_from_row(r: &Row<'_>, now: i64) -> rusqlite::Result<StoredTi
 /// Vložení/aktualizace titulu. Pole, která nový zdroj nezná (český název,
 /// aliasy), se nepřepisují prázdnem. Vrací id.
 fn upsert(tx: &Transaction<'_>, m: &TitleMeta, now: i64) -> Result<i64> {
+    // Aliasy se slučují (Wikidata, AniList i Cinemeta je dodávají zvlášť).
+    let stored: Option<String> = tx
+        .query_row("SELECT aliases FROM title WHERE kind = ?1 AND imdb_id = ?2", params![kind_str(m.kind), m.imdb_id], |r| r.get(0))
+        .optional()?;
+    let aliases = merge_aliases(stored.as_deref().map(from_json).unwrap_or_default(), &m.aliases, &m.title_orig);
     tx.execute(
         "INSERT INTO title (kind, imdb_id, title_orig, title_cs, aliases, year, overview, poster,
              background, logo, runtime_min, rating, genres, countries, anime, release_date,
@@ -119,7 +124,7 @@ fn upsert(tx: &Transaction<'_>, m: &TitleMeta, now: i64) -> Result<i64> {
          ON CONFLICT (kind, imdb_id) DO UPDATE SET
              title_orig   = excluded.title_orig,
              title_cs     = COALESCE(excluded.title_cs, title.title_cs),
-             aliases      = CASE WHEN excluded.aliases = '[]' THEN title.aliases ELSE excluded.aliases END,
+             aliases      = excluded.aliases,
              year         = COALESCE(excluded.year, title.year),
              overview     = COALESCE(excluded.overview, title.overview),
              poster       = COALESCE(excluded.poster, title.poster),
@@ -138,7 +143,7 @@ fn upsert(tx: &Transaction<'_>, m: &TitleMeta, now: i64) -> Result<i64> {
             m.imdb_id,
             m.title_orig,
             m.title_cs,
-            to_json(&m.aliases),
+            to_json(&aliases),
             m.year,
             m.overview,
             m.poster,
@@ -161,7 +166,29 @@ fn upsert(tx: &Transaction<'_>, m: &TitleMeta, now: i64) -> Result<i64> {
     )?)
 }
 
+/// Přidá nové aliasy (bez duplicit po normalizaci a bez hlavního názvu).
+fn merge_aliases(mut list: Vec<String>, new: &[String], title_orig: &str) -> Vec<String> {
+    for a in new {
+        let n = normalize_title(a);
+        if n != normalize_title(title_orig) && !list.iter().any(|x| normalize_title(x) == n) {
+            list.push(a.clone());
+        }
+    }
+    list
+}
+
 impl Db {
+    /// Doplní aliasy k titulu (např. romaji z AniListu).
+    pub fn add_aliases(&self, title_id: i64, new: &[String]) -> Result<()> {
+        self.with(|c| {
+            let (orig, aliases): (String, String) =
+                c.query_row("SELECT title_orig, aliases FROM title WHERE id = ?1", [title_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let merged = merge_aliases(from_json(&aliases), new, &orig);
+            c.execute("UPDATE title SET aliases = ?2 WHERE id = ?1", params![title_id, to_json(&merged)])?;
+            Ok(())
+        })
+    }
+
     /// Uloží karty ze seznamu/hledání (krátkodobá vrstva). Vrací id ve stejném pořadí.
     pub fn upsert_cards(&self, metas: &[TitleMeta]) -> Result<Vec<i64>> {
         let now = self.now();

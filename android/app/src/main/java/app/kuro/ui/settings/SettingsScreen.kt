@@ -205,7 +205,7 @@ fun SettingsScreen(onLogin: () -> Unit) {
             Text(
                 "Všechno zůstává v telefonu: historie, pozice, oblíbené i stažené soubory. Kuro nemá " +
                     "vlastní server ani cloud a nic nezálohuje. Ven jdou jen dotazy na katalog " +
-                    "(Cinemeta, Wikidata) a na zapnuté zdroje.",
+                    "(Cinemeta, Wikidata, AniList) a na zapnuté zdroje.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

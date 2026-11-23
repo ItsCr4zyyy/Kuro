@@ -158,6 +158,108 @@ impl Wikidata {
     }
 }
 
+/// Kam AniList anime patří na IMDb: seriál (nebo film) a číslo sezóny.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AniMapping {
+    pub imdb_id: String,
+    /// `None` = položka sama má IMDb ID (film, seriál bez dělení na sezóny).
+    pub season: Option<u16>,
+}
+
+fn sparql_values(ids: impl Iterator<Item = String>) -> String {
+    ids.map(|id| format!("\"{}\"", id.chars().filter(char::is_ascii_alphanumeric).collect::<String>()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Řádky SPARQL výsledku jako mapy proměnná → hodnota.
+fn rows_of(v: &serde_json::Value) -> Vec<HashMap<String, String>> {
+    v["results"]["bindings"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| r.as_object())
+                .map(|r| r.iter().filter_map(|(k, v)| Some((k.clone(), v["value"].as_str()?.to_owned()))).collect())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn parse_anilist_map(v: &serde_json::Value) -> HashMap<u64, AniMapping> {
+    let mut out: HashMap<u64, AniMapping> = HashMap::new();
+    for r in rows_of(v) {
+        let Some(a) = r.get("a").and_then(|a| a.parse::<u64>().ok()) else { continue };
+        let tt = |k: &str| r.get(k).filter(|s| s.starts_with("tt")).cloned();
+        // Vlastní IMDb ID má přednost před "část seriálu".
+        let m = if let Some(imdb) = tt("imdb") {
+            AniMapping { imdb_id: imdb, season: None }
+        } else if let Some(series) = tt("simdb") {
+            let season = r.get("ord").and_then(|o| o.trim().parse::<u16>().ok());
+            AniMapping { imdb_id: series, season }
+        } else {
+            continue;
+        };
+        match out.get(&a) {
+            Some(prev) if prev.season.is_none() || m.season.is_some() && prev.season.is_some() => {}
+            _ => {
+                out.insert(a, m);
+            }
+        }
+    }
+    out
+}
+
+impl Wikidata {
+    async fn sparql(&self, query: &str) -> Result<serde_json::Value> {
+        let once = || async {
+            let res = self
+                .http
+                .get(&self.endpoint)
+                .query(&[("query", query), ("format", "json")])
+                .header("Accept", "application/sparql-results+json")
+                .timeout(Duration::from_secs(45))
+                .send()
+                .await?;
+            if !res.status().is_success() {
+                return Err(Error::Http { status: res.status().as_u16(), context: "wikidata".into() });
+            }
+            Ok(res.json::<serde_json::Value>().await?)
+        };
+        match once().await {
+            Err(e) if e.is_retryable() => {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                once().await
+            }
+            r => r,
+        }
+    }
+
+    /// AniList id → IMDb (film / seriál + sezóna). Anime, které Wikidata
+    /// nezná, v mapě chybí.
+    pub async fn anilist_map(&self, anilist_ids: &[u64]) -> Result<HashMap<u64, AniMapping>> {
+        if anilist_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let values = sparql_values(anilist_ids.iter().map(u64::to_string));
+        let q = format!(
+            "SELECT ?a ?imdb ?simdb ?ord WHERE {{ VALUES ?a {{ {values} }} ?item wdt:P8729 ?a .              OPTIONAL {{ ?item wdt:P345 ?imdb }}              OPTIONAL {{ ?item p:P179 ?st . ?st ps:P179 ?series . ?series wdt:P345 ?simdb . OPTIONAL {{ ?st pq:P1545 ?ord }} }} }}"
+        );
+        Ok(parse_anilist_map(&self.sparql(&q).await?))
+    }
+
+    /// IMDb → AniList id (titul sám nebo jeho sezóny). Pro romaji názvy
+    /// u anime, které přišlo z Cinemety.
+    pub async fn anilist_ids(&self, imdb_id: &str) -> Result<Vec<u64>> {
+        let values = sparql_values(std::iter::once(imdb_id.to_owned()));
+        let q = format!(
+            "SELECT DISTINCT ?a WHERE {{ VALUES ?imdb {{ {values} }} ?s wdt:P345 ?imdb .              {{ ?s wdt:P8729 ?a }} UNION {{ ?item wdt:P179 ?s . ?item wdt:P8729 ?a }} }} LIMIT 20"
+        );
+        let mut ids: Vec<u64> = rows_of(&self.sparql(&q).await?).iter().filter_map(|r| r.get("a")?.parse().ok()).collect();
+        ids.sort_unstable();
+        Ok(ids)
+    }
+}
+
 fn merge_rows(rows: Vec<Row>) -> Vec<LocalizedTitles> {
     let mut by_id: Vec<LocalizedTitles> = vec![];
     for row in rows {
@@ -184,6 +286,19 @@ fn merge_rows(rows: Vec<Row>) -> Vec<LocalizedTitles> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maps_anilist_to_imdb() {
+        let v: serde_json::Value = serde_json::from_str(r#"{"results":{"bindings":[
+            {"a":{"value":"21"},"imdb":{"value":"tt0388629"}},
+            {"a":{"value":"182255"},"simdb":{"value":"tt22248376"},"ord":{"value":"2"}},
+            {"a":{"value":"5"},"simdb":{"value":"nm123"}}
+        ]}}"#).unwrap();
+        let m = parse_anilist_map(&v);
+        assert_eq!(m[&21], AniMapping { imdb_id: "tt0388629".into(), season: None });
+        assert_eq!(m[&182255], AniMapping { imdb_id: "tt22248376".into(), season: Some(2) });
+        assert!(!m.contains_key(&5), "jen tt id");
+    }
 
     #[test]
     fn cleans_labels() {

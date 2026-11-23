@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use kuro_core::finder::{FinderConfig, StreamFinder};
 use kuro_core::matcher::{MatchTarget, MediaKind};
-use kuro_core::meta::{Cinemeta, TitleMeta, Wikidata};
+use kuro_core::meta::{AniList, AnimeList, Cinemeta, TitleMeta, Wikidata};
 use kuro_core::providers::{LinkPurpose, Provider, Webshare};
 
 type R<T> = Result<T, Box<dyn std::error::Error>>;
@@ -103,6 +103,30 @@ async fn main() -> R<()> {
             }
         }
 
+        // Anime katalog: anime trending|season|popular|top|movies
+        ["anime", which] => {
+            let list = match *which {
+                "trending" => AnimeList::Trending,
+                "season" => AnimeList::Season,
+                "popular" => AnimeList::Popular,
+                "top" => AnimeList::TopRated,
+                _ => AnimeList::Movies,
+            };
+            let medias = AniList::new(http.clone()).list(list, 1).await?;
+            let titles = kuro_core::meta::resolve_anime(&medias, &wikidata, &cinemeta).await;
+            println!("{} z AniListu → {} titulů s IMDb", medias.len(), titles.len());
+            for t in &titles {
+                println!("{}  aliasy {:?}", card(t), t.aliases);
+            }
+        }
+
+        ["anime-search", q @ ..] => {
+            let medias = AniList::new(http.clone()).search(&q.join(" ")).await?;
+            for t in kuro_core::meta::resolve_anime(&medias, &wikidata, &cinemeta).await {
+                println!("{}  aliasy {:?}", card(&t), t.aliases);
+            }
+        }
+
         ["cz", ids @ ..] => {
             let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
             for (id, t) in wikidata.localized_titles(&ids).await {
@@ -123,6 +147,17 @@ async fn main() -> R<()> {
             };
             if let Ok(Some(loc)) = wikidata.localized_title(id).await {
                 t.apply_localized(&loc);
+            }
+            if t.anime {
+                // Romaji a další názvy z AniListu (přes Wikidata).
+                let ids = wikidata.anilist_ids(id).await.unwrap_or_default();
+                for m in AniList::new(http.clone()).by_ids(&ids).await.unwrap_or_default() {
+                    for n in std::iter::once(m.title().to_owned()).chain(m.names(&t.title_orig)) {
+                        if n != t.title_orig && !t.aliases.contains(&n) {
+                            t.aliases.push(n);
+                        }
+                    }
+                }
             }
             eprintln!("· {} ({:?}), aliasy {:?}", t.display_title(), t.year, t.aliases);
 
