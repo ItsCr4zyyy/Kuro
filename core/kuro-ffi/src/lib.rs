@@ -557,7 +557,7 @@ fn rank_by_name(cards: Vec<TitleCard>, query: &str) -> Vec<TitleCard> {
     let q = normalize_title(query);
     let class = |c: &TitleCard| {
         let names = [normalize_title(&c.title), normalize_title(&c.original_title)];
-        if names.iter().any(|n| *n == q) {
+        if names.contains(&q) {
             0
         } else if names.iter().any(|n| n.starts_with(&q)) {
             1
