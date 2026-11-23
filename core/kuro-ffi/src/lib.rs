@@ -32,6 +32,9 @@ pub trait StreamListener: Send + Sync {
 
 /// Jak starý detail se ještě nepřenačítá. U seriálů krátce kvůli novým epizodám.
 const SERIES_DETAIL_TTL_MS: i64 = DAY_MS;
+
+/// Id řady doporučení "Pro tebe".
+const FOR_YOU: &str = "for_you";
 const MOVIE_DETAIL_TTL_MS: i64 = 30 * DAY_MS;
 
 #[derive(uniffi::Object)]
@@ -131,7 +134,8 @@ impl KuroCore {
                 interleave(movies, series)
             }
         };
-        self.store_cards(&metas)
+        let cards = self.store_cards(&metas)?;
+        Ok(rank_by_name(cards, q))
     }
 
     /// Okamžité napovídání z lokální databáze (bez sítě).
@@ -427,6 +431,104 @@ impl KuroCore {
         Ok(self.db.delete_download(id)?)
     }
 
+    /* ------------------------------ doporučení ------------------------------ */
+
+    /// Uložená řada "Pro tebe" (okamžitě, bez sítě).
+    pub fn recommendations(&self) -> Result<RecRow> {
+        let (items, at) = self.db.rec_row(FOR_YOU)?;
+        Ok(RecRow { items: items.iter().map(TitleCard::from).collect(), computed_at_ms: at })
+    }
+
+    /// Spočítá řadu "Pro tebe" z profilu vkusu a veřejných katalogů.
+    /// `check_availability`: ověřit u Webshare, že k titulu je zdroj
+    /// (pomalejší, ~20 dotazů; volá denní úloha na Wi-Fi).
+    pub async fn compute_recommendations(&self, check_availability: bool) -> Result<RecRow> {
+        use kuro_core::matcher::MediaKind as K;
+        use kuro_core::recommend::{rank, Profile};
+
+        let profile = Profile::from_taste(&self.db.taste("", 500)?);
+        if profile.is_empty() {
+            self.db.save_rec_row(FOR_YOU, &[])?;
+            return self.recommendations();
+        }
+
+        // Kandidáti: oblíbené žánry (populární + doporučené) a novinky.
+        let year = kuro_core::time::current_year().to_string();
+        let mut requests: Vec<(K, CatalogId, Option<String>)> = vec![];
+        for kind in [K::Movie, K::Series] {
+            if profile.kind_weight(kind) < 0.15 {
+                continue;
+            }
+            for g in profile.top_genres(3) {
+                requests.push((kind, CatalogId::Top, Some(g.clone())));
+                requests.push((kind, CatalogId::ImdbRating, Some(g)));
+            }
+            requests.push((kind, CatalogId::Year, Some(year.clone())));
+        }
+        let pages = futures_util::future::join_all(
+            requests.iter().map(|(k, c, g)| self.cinemeta.catalog(*k, *c, g.as_deref(), 0)),
+        )
+        .await;
+
+        let mut seen = std::collections::HashSet::new();
+        let metas: Vec<kuro_core::meta::TitleMeta> = pages
+            .into_iter()
+            .filter_map(|p| p.ok())
+            .flatten()
+            .filter(|m| seen.insert((m.kind, m.imdb_id.clone())))
+            .collect();
+        if metas.is_empty() {
+            // Bez sítě: nechat starou řadu, nepřepisovat prázdnou.
+            return self.recommendations();
+        }
+
+        let ids = self.db.upsert_cards(&metas)?;
+        let excluded = self.db.rec_excluded_ids()?;
+        let candidates: Vec<(i64, kuro_core::meta::TitleMeta)> =
+            ids.into_iter().zip(metas).filter(|(id, _)| !excluded.contains(id)).collect();
+        let ranked = rank(&candidates, &profile, kuro_core::time::current_year(), 40);
+
+        let chosen: Vec<(i64, f64)> = if check_availability {
+            // Do řady jen to, co jde pustit. Strop na počet ověření šetří Webshare.
+            let mut ok = vec![];
+            for (id, score) in ranked.iter().take(24) {
+                let is_series = candidates.iter().any(|(cid, m)| cid == id && m.kind == K::Series);
+                let (s, e) = if is_series { (1, 1) } else { (0, 0) };
+                let cached = self.db.cached_streams(target(*id, s, e))?;
+                let available = if cached.is_fresh {
+                    !cached.streams.is_empty()
+                } else {
+                    self.find_streams(*id, s, e, None).await.map(|v| !v.is_empty()).unwrap_or(false)
+                };
+                if available {
+                    ok.push((*id, *score));
+                }
+                if ok.len() >= 15 {
+                    break;
+                }
+            }
+            ok
+        } else {
+            ranked.into_iter().take(20).collect()
+        };
+
+        self.db.save_rec_row(FOR_YOU, &chosen)?;
+        self.recommendations()
+    }
+
+    /// Denní kontrola nových dílů rozkoukaných seriálů (bez zápisu
+    /// "otevřeno" do vkusu). Vrací počet obnovených seriálů.
+    pub async fn refresh_series_in_progress(&self) -> Result<i32> {
+        let mut n = 0;
+        for t in self.db.series_in_progress(15)? {
+            if let Ok(Some(meta)) = self.cinemeta.meta(t.meta.kind, &t.meta.imdb_id).await {
+                self.db.upsert_detail(&meta)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
     /* ------------------------------ údržba ------------------------------ */
 
     /// Běžný úklid (denně na pozadí).
@@ -447,6 +549,27 @@ impl KuroCore {
     }
 }
 
+/// Přesná shoda názvu první, pak názvy začínající dotazem, pak zbytek
+/// (stabilně, v pořadí Cinemety). Bez toho "Breaking Bad" vrátí nejdřív
+/// film El Camino a "Ozark" vánoční film, protože se střídá film/seriál.
+fn rank_by_name(cards: Vec<TitleCard>, query: &str) -> Vec<TitleCard> {
+    use kuro_core::text::normalize_title;
+    let q = normalize_title(query);
+    let class = |c: &TitleCard| {
+        let names = [normalize_title(&c.title), normalize_title(&c.original_title)];
+        if names.iter().any(|n| *n == q) {
+            0
+        } else if names.iter().any(|n| n.starts_with(&q)) {
+            1
+        } else {
+            2
+        }
+    };
+    let mut indexed: Vec<(usize, TitleCard)> = cards.into_iter().enumerate().collect();
+    indexed.sort_by_key(|(i, c)| (class(c), *i));
+    indexed.into_iter().map(|(_, c)| c).collect()
+}
+
 /// Střídavě film/seriál — Cinemeta řadí každý typ podle relevance zvlášť.
 fn interleave<T>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
     let mut out = Vec::with_capacity(a.len() + b.len());
@@ -463,6 +586,29 @@ fn interleave<T>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn card(title: &str, orig: &str) -> TitleCard {
+        TitleCard {
+            id: 0,
+            imdb_id: String::new(),
+            kind: MediaKind::Movie,
+            title: title.into(),
+            original_title: orig.into(),
+            year: None,
+            poster: None,
+            background: None,
+            rating: None,
+            genres: vec![],
+            anime: false,
+        }
+    }
+
+    #[test]
+    fn exact_name_first() {
+        let cards = vec![card("El Camino", "El Camino: A Breaking Bad Movie"), card("Perníkový táta", "Breaking Bad"), card("Breaking Bad Recap", "Breaking Bad Recap")];
+        let out: Vec<String> = rank_by_name(cards, "breaking bad").into_iter().map(|c| c.title).collect();
+        assert_eq!(out, vec!["Perníkový táta", "Breaking Bad Recap", "El Camino"]);
+    }
 
     #[test]
     fn interleaves() {

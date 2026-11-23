@@ -97,7 +97,16 @@ class PlayerActivity : ComponentActivity() {
         view.mpv.addObserver(state)
 
         // Knihovna startuje mpv s pause=true — po načtení souboru rozběhnout.
-        state.onLoaded = { view.mpv.setPropertyBoolean("pause", false) }
+        var startedRecorded = false
+        state.onLoaded = {
+            view.mpv.setPropertyBoolean("pause", false)
+            // Přehrávání se rozjelo (online i ze staženého souboru): zájem
+            // o titul + jazyková preference + "zdroj funguje". Jednou.
+            if (!startedRecorded) {
+                startedRecorded = true
+                runCatching { core.playbackStarted(titleId, season, episode, provider, ident) }
+            }
+        }
         state.onFailed = {
             // Nerozjelo se vůbec → zdroj v řazení klesne.
             if (!state.loaded) runCatching { core.reportStream(provider, ident, false) }

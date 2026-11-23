@@ -267,7 +267,7 @@ class DetailViewModel(
             resolving = stream.ident
             try {
                 val link = core.resolveStream(stream.provider, stream.ident, LinkPurpose.STREAM)
-                core.playbackStarted(titleId, t.season, t.episode, stream.provider, stream.ident)
+                // "Přehrávání začalo" zapisuje přehrávač, až se video opravdu rozjede.
                 event = PlayEvent.Ready(link, t, stream)
             } catch (e: KuroException) {
                 when (e) {

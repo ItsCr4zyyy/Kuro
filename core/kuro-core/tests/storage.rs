@@ -322,3 +322,49 @@ fn downloads_lifecycle_and_pinning() {
     assert_eq!(db.delete_download(d2).unwrap().as_deref(), Some("/x/b.mkv"));
     assert!(db.download_for(Target::episode(ids[1], 1, 1)).unwrap().is_none());
 }
+
+#[test]
+fn continue_offers_next_episode_after_finishing() {
+    let (db, clock) = db();
+    let mut m = meta("tt9", "Seriál", MediaKind::Series, &["Crime"], 2020);
+    m.episodes = [(1, 1), (1, 2), (2, 1)]
+        .iter()
+        .map(|&(s, e)| EpisodeMeta { season: s, episode: e, name: None, overview: None, still: None, air_date: None })
+        .collect();
+    let id = db.upsert_detail(&m).unwrap();
+
+    db.save_progress(Target::episode(id, 1, 1), 50 * 60_000, 50 * 60_000, None).unwrap();
+    let c = db.continue_watching(10).unwrap();
+    assert_eq!(c.len(), 1);
+    assert_eq!((c[0].progress.target.season, c[0].progress.target.episode, c[0].progress.position_ms), (1, 2, 0));
+
+    // Poslední díl řady dokoukán → další řada.
+    clock.fetch_add(1000, Ordering::SeqCst);
+    db.save_progress(Target::episode(id, 1, 2), 50 * 60_000, 50 * 60_000, None).unwrap();
+    assert_eq!(db.continue_watching(10).unwrap()[0].progress.target.season, 2);
+
+    // Vše dokoukáno → seriál z "Pokračovat" zmizí.
+    clock.fetch_add(1000, Ordering::SeqCst);
+    db.save_progress(Target::episode(id, 2, 1), 50 * 60_000, 50 * 60_000, None).unwrap();
+    assert!(db.continue_watching(10).unwrap().is_empty());
+}
+
+#[test]
+fn rec_rows_skip_watched_and_remember_time() {
+    let (db, _) = db();
+    let ids = db
+        .upsert_cards(&[
+            meta("tt1", "A", MediaKind::Movie, &["Drama"], 2015),
+            meta("tt2", "B", MediaKind::Movie, &["Drama"], 2016),
+        ])
+        .unwrap();
+    assert!(db.rec_row("for_you").unwrap().1.is_none());
+    db.save_rec_row("for_you", &[(ids[0], 0.9), (ids[1], 0.8)]).unwrap();
+    let (items, at) = db.rec_row("for_you").unwrap();
+    assert_eq!(items.iter().map(|t| t.id).collect::<Vec<_>>(), ids);
+    assert!(at.is_some());
+
+    db.set_watchlist(ids[0], true).unwrap();
+    assert_eq!(db.rec_row("for_you").unwrap().0.len(), 1, "oblíbené už se nedoporučuje");
+    assert!(db.rec_excluded_ids().unwrap().contains(&ids[0]));
+}

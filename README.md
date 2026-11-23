@@ -22,7 +22,7 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 | UI: Domů, hledání, detail se sezónami a zdroji, knihovna, přihlášení, nastavení | ✅ hotovo |
 | Přehrávač mpv: gesta, stopy, ASS titulky, navázání, obraz v obraze | ✅ hotovo, ověřeno na emulátoru |
 | Stahování offline: na pozadí, navázání po výpadku, celé sezóny, přehrávání bez internetu | ✅ hotovo, ověřeno na emulátoru |
-| Doporučení podle vkusu (na zařízení) | ⏳ další krok |
+| Doporučení podle vkusu (na zařízení), další díl v Pokračovat, kontrola nových dílů | ✅ hotovo |
 | Přehraj.to, anime (AniList, české titulky) | — |
 
 ## Plánované funkce

@@ -84,7 +84,11 @@ fun LibraryScreen(onOpen: (Long) -> Unit) {
                     onClick = { onOpen(c.title.id) },
                     modifier = Modifier.fillMaxWidth(),
                     progress = if (p.durationMs > 0) p.positionMs.toFloat() / p.durationMs else null,
-                    caption = (if (p.season > 0) "S${p.season} E${p.episode} · " else "") + formatPosition(p.positionMs),
+                    caption = when {
+                        p.season > 0 && p.positionMs == 0L -> "S${p.season} E${p.episode} · další díl"
+                        p.season > 0 -> "S${p.season} E${p.episode} · ${formatPosition(p.positionMs)}"
+                        else -> formatPosition(p.positionMs)
+                    },
                 )
             }
         }

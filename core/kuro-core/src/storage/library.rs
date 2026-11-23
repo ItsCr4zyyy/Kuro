@@ -165,17 +165,56 @@ impl Db {
         let cols = prefixed(TITLE_COLS, "t");
         let n = TITLE_COLS.split(", ").count();
         self.with(|c| {
+            // Poslední pozice každého titulu: rozkoukané (aspoň minuta),
+            // nebo dokoukaný díl seriálu — pak se nabídne další díl.
             let mut stmt = c.prepare(&format!(
                 "SELECT {cols}, {PROGRESS_COLS}
                  FROM progress p JOIN title t ON t.id = p.title_id
                  WHERE p.updated_at = (SELECT MAX(updated_at) FROM progress q WHERE q.title_id = p.title_id)
-                   AND p.finished = 0 AND p.position_ms >= 60000
-                 ORDER BY p.updated_at DESC LIMIT ?1"
+                   AND ((p.finished = 0 AND p.position_ms >= 60000) OR (p.finished = 1 AND p.episode > 0))
+                 ORDER BY p.updated_at DESC"
             ))?;
-            let rows = stmt.query_map([limit], |r| {
-                Ok(ContinueItem { title: title_from_row(r, now)?, progress: progress_from_row(r, n)? })
-            })?;
-            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+            let candidates = stmt
+                .query_map([], |r| Ok(ContinueItem { title: title_from_row(r, now)?, progress: progress_from_row(r, n)? }))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let mut next_ep = c.prepare(
+                "SELECT e.season, e.episode FROM episode e
+                 WHERE e.title_id = ?1 AND (e.season > ?2 OR (e.season = ?2 AND e.episode > ?3))
+                   AND NOT EXISTS (SELECT 1 FROM progress p WHERE p.title_id = e.title_id
+                                   AND p.season = e.season AND p.episode = e.episode AND p.finished = 1)
+                 ORDER BY e.season, e.episode LIMIT 1",
+            )?;
+            let mut out = Vec::new();
+            for item in candidates {
+                if out.len() as u32 >= limit {
+                    break;
+                }
+                if !item.progress.finished {
+                    out.push(item);
+                    continue;
+                }
+                // Dokoukaný díl → další díl (pokud ho katalog zná), od začátku.
+                let t = item.progress.target;
+                let next: Option<(u16, u16)> = next_ep
+                    .query_row(params![t.title_id, t.season, t.episode], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .optional()?;
+                if let Some((season, episode)) = next {
+                    out.push(ContinueItem {
+                        progress: Progress {
+                            target: Target { title_id: t.title_id, season, episode },
+                            position_ms: 0,
+                            duration_ms: 0,
+                            finished: false,
+                            provider: None,
+                            ident: None,
+                            updated_at: item.progress.updated_at,
+                        },
+                        title: item.title,
+                    });
+                }
+            }
+            Ok(out)
         })
     }
 

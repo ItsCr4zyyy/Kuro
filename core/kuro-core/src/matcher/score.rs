@@ -6,7 +6,7 @@
 use super::parse::ParsedRelease;
 use crate::text::{normalize_loose, normalize_numerals, normalize_title, similarity};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MediaKind {
     Movie,
     Series,

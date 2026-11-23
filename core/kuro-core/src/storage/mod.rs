@@ -16,6 +16,7 @@ mod catalog;
 mod downloads;
 mod library;
 mod prune;
+mod recs;
 mod streams;
 
 pub use catalog::{Event, StoredTitle};

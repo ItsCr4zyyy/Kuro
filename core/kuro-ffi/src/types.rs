@@ -369,3 +369,10 @@ pub struct EnqueueResult {
     /// Soubor rozpracovaného stažení, které nový zdroj nahradil — smazat.
     pub stale_file: Option<String>,
 }
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct RecRow {
+    pub items: Vec<TitleCard>,
+    /// Kdy se řada počítala; None = nikdy.
+    pub computed_at_ms: Option<i64>,
+}

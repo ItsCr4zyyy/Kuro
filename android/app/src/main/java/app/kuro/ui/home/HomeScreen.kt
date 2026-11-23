@@ -108,6 +108,40 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
     var watchlistIds by mutableStateOf<Set<Long>>(emptySet())
         private set
 
+    /** Řada "Pro tebe" (všechny typy; filtruje se podle sekce v [forYou]). */
+    private var recs by mutableStateOf<List<TitleCard>>(emptyList())
+
+    /** Doporučení pro aktuální sekci. */
+    val forYou: List<TitleCard>
+        get() = recs.filter {
+            when (section) {
+                Section.MOVIES -> it.kind == MediaKind.MOVIE && !it.anime
+                Section.SERIES -> it.kind == MediaKind.SERIES && !it.anime
+                Section.ANIME -> it.anime || "Animation" in it.genres
+            }
+        }
+
+    private var computingRecs = false
+
+    private fun loadRecs() {
+        val row = runCatching { core.recommendations() }.getOrNull() ?: return
+        recs = row.items
+        if (computingRecs) return
+        // Prázdná řada (nový uživatel bez vkusu) se zkouší znovu hned,
+        // jakmile něco začne sledovat; jinak jednou za den.
+        val stale = row.items.isEmpty() ||
+            row.computedAtMs?.let { System.currentTimeMillis() - it > 24 * 60 * 60 * 1000L } ?: true
+        if (!stale) return
+        // Rychlý výpočet bez ověřování dostupnosti; ověřenou řadu dodá denní úloha.
+        computingRecs = true
+        viewModelScope.launch {
+            runCatching { core.computeRecommendations(false) }.getOrNull()?.let { fresh ->
+                recs = runCatching { core.localize(fresh.items.map { it.id }) }.getOrDefault(fresh.items)
+            }
+            computingRecs = false
+        }
+    }
+
     /**
      * Velký titul nahoře: náhodně z prvních pár populárních, které mají
      * obrázek pozadí. Náhodnost drží VM, takže se při posouvání nemění.
@@ -140,6 +174,7 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
     }
 
     fun refreshLocal() {
+        loadRecs()
         continueItems = runCatching { core.continueWatching(20) }.getOrDefault(emptyList())
         watchlistIds = runCatching { core.watchlist().map { it.id }.toSet() }.getOrDefault(emptySet())
     }
@@ -209,14 +244,20 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
                                 c.title,
                                 onClick = { onOpen(c.title.id) },
                                 progress = if (p.durationMs > 0) p.positionMs.toFloat() / p.durationMs else null,
-                                caption = if (p.season > 0) {
-                                    "S${p.season} E${p.episode} · ${formatPosition(p.positionMs)}"
-                                } else {
-                                    formatPosition(p.positionMs)
+                                caption = when {
+                                    p.season > 0 && p.positionMs == 0L -> "S${p.season} E${p.episode} · další díl"
+                                    p.season > 0 -> "S${p.season} E${p.episode} · ${formatPosition(p.positionMs)}"
+                                    else -> formatPosition(p.positionMs)
                                 },
                             )
                         }
                     }
+                }
+            }
+            if (vm.forYou.isNotEmpty()) {
+                item(key = "for-you-${vm.section}") {
+                    PosterRow("Pro tebe", vm.forYou) { onOpen(it.id) }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
             if (vm.offline && !vm.loading) {
