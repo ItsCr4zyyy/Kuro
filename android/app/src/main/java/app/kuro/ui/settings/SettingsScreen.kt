@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.kuro.BuildConfig
 import app.kuro.core.AccountInfo
+import app.kuro.core.DownloadStatus
+import app.kuro.ui.common.formatSize
 import app.kuro.core.KuroException
 import app.kuro.data.Settings
 import app.kuro.data.TokenVault
@@ -133,6 +135,33 @@ fun SettingsScreen(onLogin: () -> Unit) {
                 }
             }) { Text("Pročistit paměť") }
             cleanResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+
+        Group("Stahování") {
+            var wifiOnly by remember { mutableStateOf(app.settings.downloadWifiOnly) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Jen přes Wi-Fi", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Na mobilních datech stahování počká.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                androidx.compose.material3.Switch(checked = wifiOnly, onCheckedChange = {
+                    wifiOnly = it
+                    app.settings.downloadWifiOnly = it
+                })
+            }
+            val used = remember(cleanResult) {
+                runCatching { app.core.downloads() }.getOrDefault(emptyList())
+                    .filter { it.status == DownloadStatus.DONE }.sumOf { it.bytesTotal }
+            }
+            Text(
+                "Stažené zabírají ${formatSize(used).replace("—", "0 MB")}. Smazat je jde v Knihovně.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Group("Soukromí") {

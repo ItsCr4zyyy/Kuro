@@ -288,3 +288,84 @@ impl From<storage::PruneReport> for PruneInfo {
         Self { expired: r.expired as i32, evicted: r.evicted as i32, titles_left: r.titles_left as i32 }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DownloadStatus {
+    Queued,
+    Running,
+    Paused,
+    Done,
+    Failed,
+}
+
+impl From<storage::DownloadState> for DownloadStatus {
+    fn from(s: storage::DownloadState) -> Self {
+        use storage::DownloadState as S;
+        match s {
+            S::Queued => DownloadStatus::Queued,
+            S::Running => DownloadStatus::Running,
+            S::Paused => DownloadStatus::Paused,
+            S::Done => DownloadStatus::Done,
+            S::Failed => DownloadStatus::Failed,
+        }
+    }
+}
+
+impl From<DownloadStatus> for storage::DownloadState {
+    fn from(s: DownloadStatus) -> Self {
+        use storage::DownloadState as S;
+        match s {
+            DownloadStatus::Queued => S::Queued,
+            DownloadStatus::Running => S::Running,
+            DownloadStatus::Paused => S::Paused,
+            DownloadStatus::Done => S::Done,
+            DownloadStatus::Failed => S::Failed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DownloadInfo {
+    pub id: i64,
+    pub title_id: i64,
+    /// 0 u filmu.
+    pub season: i32,
+    pub episode: i32,
+    pub provider: Option<Provider>,
+    pub ident: String,
+    pub filename: String,
+    pub local_path: Option<String>,
+    pub status: DownloadStatus,
+    pub bytes_done: i64,
+    pub bytes_total: i64,
+    pub error: Option<String>,
+    /// Vyplněné jen ve výpisu `downloads()`.
+    pub title: Option<TitleCard>,
+}
+
+impl From<&storage::Download> for DownloadInfo {
+    fn from(d: &storage::Download) -> Self {
+        Self {
+            id: d.id,
+            title_id: d.target.title_id,
+            season: d.target.season.into(),
+            episode: d.target.episode.into(),
+            provider: d.provider.map(Into::into),
+            ident: d.ident.clone(),
+            filename: d.filename.clone(),
+            local_path: d.local_path.clone(),
+            status: d.state.into(),
+            bytes_done: d.bytes_done,
+            bytes_total: d.bytes_total,
+            error: d.error.clone(),
+            title: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EnqueueResult {
+    pub id: i64,
+    /// Soubor rozpracovaného stažení, které nový zdroj nahradil — smazat.
+    pub stale_file: Option<String>,
+}

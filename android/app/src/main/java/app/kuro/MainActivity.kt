@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +36,16 @@ class MainActivity : ComponentActivity() {
      */
     private fun debugPlay(intent: android.content.Intent) {
         if (!BuildConfig.DEBUG) return
+        intent.getStringExtra("kuro_debug_download_url")?.let { url ->
+            // Stáhnout URL k prvnímu populárnímu filmu (jen test workeru).
+            val core = (application as KuroApp).core
+            lifecycleScope.launch {
+                val card = core.catalog(app.kuro.core.MediaKind.MOVIE, app.kuro.core.Catalog.POPULAR, null, 0).first()
+                val r = core.enqueueDownload(card.id, 0, 0, app.kuro.core.Provider.WEBSHARE, url, "debug.mkv", 0)
+                app.kuro.download.Downloads.start(this@MainActivity, r.id)
+            }
+            return
+        }
         val url = intent.getStringExtra("kuro_debug_play_url") ?: return
         app.kuro.player.PlayerActivity.start(
             this, titleId = -1, season = 0, episode = 0,

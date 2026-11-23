@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -42,6 +44,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.kuro.core.Episode
+import app.kuro.core.Provider
 import app.kuro.core.StreamInfo
 import app.kuro.core.TitleDetail
 import app.kuro.kuroApp
@@ -84,12 +89,31 @@ import java.util.Locale
 @Composable
 fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
     val app = kuroApp()
-    val vm: DetailViewModel = viewModel(key = "detail-$titleId") { DetailViewModel(app.core, app.vault, titleId, app.settings.bandwidthBps) }
+    val vm: DetailViewModel = viewModel(key = "detail-$titleId") { DetailViewModel(app, app.core, app.vault, titleId, app.settings.bandwidthBps) }
     val context = LocalContext.current
 
     LifecycleResumeEffect(Unit) {
         vm.refreshProgress()
         onPauseOrDispose {}
+    }
+
+    // Průběh stahování, dokud něco běží.
+    LaunchedEffect(vm.hasActiveDownloads) {
+        while (vm.hasActiveDownloads) {
+            kotlinx.coroutines.delay(1500)
+            vm.refreshDownloads()
+        }
+    }
+
+    // Android 13+: notifikace s průběhem stahování potřebují svolení.
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val askNotifications = {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     LaunchedEffect(vm.event) {
@@ -110,6 +134,20 @@ fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
                 )
                 vm.closeStreams()
             }
+            is PlayEvent.Local -> {
+                PlayerActivity.start(
+                    context,
+                    titleId = titleId,
+                    season = e.target.season,
+                    episode = e.target.episode,
+                    provider = e.download.provider ?: Provider.WEBSHARE,
+                    ident = e.download.ident,
+                    url = e.file.path,
+                    title = vm.detail?.card?.title.orEmpty(),
+                    subtitle = (e.target.label.takeIf { e.target.season > 0 }?.let { "$it · " } ?: "") + "staženo",
+                )
+            }
+            is PlayEvent.Message -> android.widget.Toast.makeText(context, e.text, android.widget.Toast.LENGTH_SHORT).show()
             null -> {}
         }
         if (vm.event != null) vm.consumeEvent()
@@ -122,11 +160,11 @@ fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
             Message(vm.error!!, action = "Zkusit znovu" to vm::load)
         }
         d == null -> Loading()
-        else -> DetailContent(d, vm, onBack)
+        else -> DetailContent(d, vm, onBack, onDownloadSeason = { askNotifications(); vm.downloadSeason(it) })
     }
 
     if (vm.target != null) {
-        StreamsSheet(vm)
+        StreamsSheet(vm, onDownload = { askNotifications(); vm.download(it) })
     }
 }
 
@@ -140,7 +178,7 @@ private fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun DetailContent(d: TitleDetail, vm: DetailViewModel, onBack: () -> Unit) {
+private fun DetailContent(d: TitleDetail, vm: DetailViewModel, onBack: () -> Unit, onDownloadSeason: (Int) -> Unit) {
     val card = d.card
     val bg = MaterialTheme.colorScheme.background
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
@@ -211,6 +249,12 @@ private fun DetailContent(d: TitleDetail, vm: DetailViewModel, onBack: () -> Uni
                         Text(if (d.inWatchlist) "V oblíbených" else "Oblíbené")
                     }
                 }
+                if (!vm.isSeries) {
+                    vm.downloadFor(0, 0)?.let { dl ->
+                        Spacer(Modifier.height(8.dp))
+                        DownloadLine(dl)
+                    }
+                }
                 if (card.genres.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     Text(card.genres.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -228,7 +272,21 @@ private fun DetailContent(d: TitleDetail, vm: DetailViewModel, onBack: () -> Uni
                         FilterChip(vm.season == s, { vm.selectSeason(s) }, { Text("Sezóna $s") })
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.TextButton(
+                        onClick = { vm.season?.let(onDownloadSeason) },
+                        enabled = vm.seasonProgress == null,
+                    ) {
+                        Icon(Icons.Outlined.Download, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Stáhnout sezónu")
+                    }
+                    vm.seasonProgress?.let {
+                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
             val episodes = d.episodes.filter { it.season == vm.season }
             items(episodes, key = { "${it.season}-${it.episode}" }) { e -> EpisodeRow(e, vm) { vm.openEpisode(e) } }
@@ -259,14 +317,16 @@ private fun EpisodeRow(e: Episode, vm: DetailViewModel, onClick: () -> Unit) {
             Text("${e.episode}. ${e.name ?: "Epizoda ${e.episode}"}", style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             e.airDate?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        vm.downloadFor(e.season, e.episode)?.let { DownloadIcon(it) }
         if (p?.finished == true) {
+            Spacer(Modifier.width(6.dp))
             Icon(Icons.Filled.CheckCircle, "Zhlédnuto", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
         }
     }
 }
 
 @Composable
-private fun StreamsSheet(vm: DetailViewModel) {
+private fun StreamsSheet(vm: DetailViewModel, onDownload: (StreamInfo) -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     ModalBottomSheet(onDismissRequest = vm::closeStreams, sheetState = state) {
         Column(Modifier.padding(horizontal = 16.dp)) {
@@ -301,6 +361,8 @@ private fun StreamsSheet(vm: DetailViewModel) {
                     bitrate = s.estimatedBitrate(vm.detail?.runtimeMin),
                     tooHeavy = vm.tooHeavy(s),
                     bandwidth = vm.bandwidthBits,
+                    downloaded = vm.target?.let { t -> vm.downloadFor(t.season, t.episode)?.ident == s.ident } == true,
+                    onDownload = { onDownload(s) },
                 ) { vm.play(s) }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
             }
@@ -315,6 +377,8 @@ private fun StreamRow(
     bitrate: Long?,
     tooHeavy: Boolean,
     bandwidth: Long?,
+    downloaded: Boolean,
+    onDownload: () -> Unit,
     onClick: () -> Unit,
 ) {
     val czech = s.audioLangs.any { it == "cs" || it == "sk" }
@@ -345,6 +409,13 @@ private fun StreamRow(
                 )
             }
         }
+        IconButton(onClick = onDownload, enabled = !downloaded) {
+            Icon(
+                if (downloaded) Icons.Filled.DownloadDone else Icons.Outlined.Download,
+                if (downloaded) "Staženo" else "Stáhnout",
+                tint = if (downloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Box(Modifier.size(40.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
             if (resolving) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -352,5 +423,46 @@ private fun StreamRow(
                 Icon(Icons.Filled.PlayArrow, "Přehrát", tint = MaterialTheme.colorScheme.primary)
             }
         }
+    }
+}
+
+/** Malá ikona stavu stažení u epizody. */
+@Composable
+private fun DownloadIcon(d: app.kuro.core.DownloadInfo) {
+    when (d.status) {
+        app.kuro.core.DownloadStatus.DONE ->
+            Icon(Icons.Filled.DownloadDone, "Staženo", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        app.kuro.core.DownloadStatus.FAILED ->
+            Icon(Icons.Outlined.ErrorOutline, "Stažení selhalo", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+        app.kuro.core.DownloadStatus.PAUSED ->
+            Icon(Icons.Outlined.Download, "Pozastaveno", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        else -> CircularProgressIndicator(
+            progress = { if (d.bytesTotal > 0) d.bytesDone.toFloat() / d.bytesTotal else 0f },
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+        )
+    }
+}
+
+/** Řádek se stavem stažení filmu. */
+@Composable
+private fun DownloadLine(d: app.kuro.core.DownloadInfo) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        DownloadIcon(d)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            when (d.status) {
+                app.kuro.core.DownloadStatus.DONE -> "Staženo · ${formatSize(d.bytesTotal)} · přehraje se bez internetu"
+                app.kuro.core.DownloadStatus.FAILED -> "Stažení selhalo: ${d.error ?: ""}"
+                app.kuro.core.DownloadStatus.PAUSED -> "Stahování pozastaveno"
+                else -> if (d.bytesTotal > 0) {
+                    "Stahuji ${d.bytesDone * 100 / d.bytesTotal} % · ${formatSize(d.bytesDone)} z ${formatSize(d.bytesTotal)}"
+                } else {
+                    "Čeká na stažení"
+                }
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

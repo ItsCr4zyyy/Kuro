@@ -203,6 +203,11 @@ impl KuroCore {
         })
     }
 
+    /// Karta titulu z databáze (bez sítě, bez zápisu události).
+    pub fn title_card(&self, title_id: i64) -> Result<Option<TitleCard>> {
+        Ok(self.db.title(title_id)?.as_ref().map(TitleCard::from))
+    }
+
     pub fn record_event(&self, title_id: i64, event: UserEvent) -> Result<()> {
         Ok(self.db.record_event(title_id, event.into())?)
     }
@@ -361,6 +366,65 @@ impl KuroCore {
 
     pub fn clear_recent_searches(&self) -> Result<()> {
         Ok(self.db.clear_recent_searches()?)
+    }
+
+    /* ------------------------------ stahování ------------------------------ */
+
+    /// Zařadí stažení zdroje. Vrací id; když nahrazuje rozpracované stažení
+    /// jiného zdroje, smaže jeho soubor (`stale_file`) volající.
+    #[allow(clippy::too_many_arguments)] // plochý podpis pro Kotlin
+    pub fn enqueue_download(
+        &self,
+        title_id: i64,
+        season: i32,
+        episode: i32,
+        provider: Provider,
+        ident: String,
+        filename: String,
+        size_bytes: i64,
+    ) -> Result<EnqueueResult> {
+        let (id, stale) = self.db.enqueue_download(target(title_id, season, episode), provider.into(), &ident, &filename, size_bytes)?;
+        Ok(EnqueueResult { id, stale_file: stale })
+    }
+
+    pub fn downloads(&self) -> Result<Vec<DownloadInfo>> {
+        Ok(self
+            .db
+            .downloads()?
+            .iter()
+            .map(|d| DownloadInfo { title: Some(TitleCard::from(&d.title)), ..DownloadInfo::from(&d.download) })
+            .collect())
+    }
+
+    pub fn download(&self, id: i64) -> Result<Option<DownloadInfo>> {
+        Ok(self.db.download(id)?.as_ref().map(DownloadInfo::from))
+    }
+
+    pub fn download_for(&self, title_id: i64, season: i32, episode: i32) -> Result<Option<DownloadInfo>> {
+        Ok(self.db.download_for(target(title_id, season, episode))?.as_ref().map(DownloadInfo::from))
+    }
+
+    /// Stažení, která mají běžet (po restartu).
+    pub fn pending_downloads(&self) -> Result<Vec<DownloadInfo>> {
+        Ok(self.db.pending_downloads()?.iter().map(DownloadInfo::from).collect())
+    }
+
+    /// Průběh z workeru. Prázdná volitelná pole = beze změny.
+    pub fn update_download(
+        &self,
+        id: i64,
+        status: DownloadStatus,
+        bytes_done: i64,
+        bytes_total: Option<i64>,
+        local_path: Option<String>,
+        error: Option<String>,
+    ) -> Result<()> {
+        Ok(self.db.update_download(id, status.into(), bytes_done, bytes_total, local_path.as_deref(), error.as_deref())?)
+    }
+
+    /// Smaže záznam a vrátí cestu k souboru, který má smazat volající.
+    pub fn delete_download(&self, id: i64) -> Result<Option<String>> {
+        Ok(self.db.delete_download(id)?)
     }
 
     /* ------------------------------ údržba ------------------------------ */

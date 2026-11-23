@@ -5,6 +5,7 @@ import androidx.core.content.edit
 import app.kuro.core.KuroCore
 import app.kuro.data.Settings
 import app.kuro.data.TokenVault
+import app.kuro.download.Downloads
 import app.kuro.work.MaintenanceWorker
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -43,6 +44,7 @@ class KuroApp : Application(), SingletonImageLoader.Factory {
         core.setWebshareToken(vault.load(TokenVault.WEBSHARE))
 
         MaintenanceWorker.schedule(this)
+        Downloads.resumePending(this)
     }
 
     /** Plakáty: disková cache s pevným limitem, Android ji smí kdykoli promazat. */

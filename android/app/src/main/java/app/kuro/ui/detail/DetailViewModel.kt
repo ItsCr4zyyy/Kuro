@@ -5,6 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.kuro.core.DownloadInfo
+import app.kuro.core.DownloadStatus
 import app.kuro.core.Episode
 import app.kuro.core.KuroCore
 import app.kuro.core.KuroException
@@ -16,6 +18,8 @@ import app.kuro.core.StreamInfo
 import app.kuro.core.StreamListener
 import app.kuro.core.TitleDetail
 import app.kuro.data.TokenVault
+import app.kuro.download.Downloads
+import app.kuro.ui.common.isSuspicious
 import app.kuro.ui.common.BANDWIDTH_HEADROOM
 import app.kuro.ui.common.estimatedBitrate
 import kotlinx.coroutines.Job
@@ -28,9 +32,15 @@ data class PlayTarget(val season: Int, val episode: Int, val label: String)
 sealed interface PlayEvent {
     data object NeedLogin : PlayEvent
     data class Ready(val link: PlayLink, val target: PlayTarget, val stream: StreamInfo) : PlayEvent
+
+    /** Staženo — přehrát soubor z telefonu, bez internetu. */
+    data class Local(val file: java.io.File, val target: PlayTarget, val download: DownloadInfo) : PlayEvent
+
+    data class Message(val text: String) : PlayEvent
 }
 
 class DetailViewModel(
+    private val app: android.app.Application,
     private val core: KuroCore,
     private val vault: TokenVault,
     val titleId: Long,
@@ -77,11 +87,77 @@ class DetailViewModel(
 
     private var findJob: Job? = null
 
+    /** Stažení tohoto titulu podle (sezóna, díl); film = (0, 0). */
+    var downloads by mutableStateOf<Map<Pair<Int, Int>, DownloadInfo>>(emptyMap())
+        private set
+
+    fun downloadFor(season: Int, episode: Int): DownloadInfo? = downloads[season to episode]
+
+    val hasActiveDownloads: Boolean
+        get() = downloads.values.any { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.RUNNING }
+
+    fun refreshDownloads() {
+        downloads = runCatching { core.downloads() }.getOrDefault(emptyList())
+            .filter { it.titleId == titleId }
+            .associateBy { it.season to it.episode }
+    }
+
+    /** Stáhnout konkrétní zdroj pro otevřený film/díl. */
+    fun download(stream: StreamInfo) {
+        val t = target ?: return
+        if (!core.isWebshareLoggedIn()) {
+            event = PlayEvent.NeedLogin
+            return
+        }
+        enqueue(t.season, t.episode, stream)
+        refreshDownloads()
+        event = PlayEvent.Message("Stahování zařazeno")
+    }
+
+    private fun enqueue(season: Int, episode: Int, s: StreamInfo) {
+        val r = core.enqueueDownload(titleId, season, episode, s.provider, s.ident, s.filename, s.sizeBytes)
+        r.staleFile?.let { java.io.File(it).delete() }
+        Downloads.start(app, r.id)
+    }
+
+    /** Stáhne celou sezónu: ke každému nestaženému dílu nejlepší zdroj. */
+    fun downloadSeason(season: Int) {
+        val d = detail ?: return
+        if (!core.isWebshareLoggedIn()) {
+            event = PlayEvent.NeedLogin
+            return
+        }
+        viewModelScope.launch {
+            seasonProgress = "Hledám zdroje…"
+            var queued = 0
+            var missing = 0
+            for (e in d.episodes.filter { it.season == season }) {
+                if (downloadFor(e.season, e.episode) != null) continue
+                seasonProgress = "Hledám zdroje… S${e.season} E${e.episode}"
+                val cached = runCatching { core.cachedStreams(titleId, e.season, e.episode) }.getOrNull()
+                val list = if (cached?.isFresh == true) cached.streams
+                else runCatching { core.findStreams(titleId, e.season, e.episode, null) }.getOrDefault(cached?.streams.orEmpty())
+                val best = list.firstOrNull { !it.isSuspicious }
+                if (best == null) missing++ else { enqueue(e.season, e.episode, best); queued++ }
+            }
+            seasonProgress = null
+            refreshDownloads()
+            event = PlayEvent.Message(
+                "Zařazeno $queued dílů" + if (missing > 0) " · $missing bez zdroje" else "",
+            )
+        }
+    }
+
+    /** Průběh hledání zdrojů pro "Stáhnout sezónu". */
+    var seasonProgress by mutableStateOf<String?>(null)
+        private set
+
     val seasons: List<Int> get() = detail?.episodes?.map { it.season }?.distinct().orEmpty()
     val isSeries: Boolean get() = detail?.card?.kind == MediaKind.SERIES
 
     init {
         load()
+        refreshDownloads()
     }
 
     fun load() {
@@ -102,6 +178,7 @@ class DetailViewModel(
 
     /** Po návratu z přehrávače: obnovit pozice a oblíbené. */
     fun refreshProgress() {
+        refreshDownloads()
         val d = detail ?: return
         detail = d.copy(progress = runCatching { core.titleProgress(titleId) }.getOrDefault(d.progress))
     }
@@ -127,11 +204,25 @@ class DetailViewModel(
         return if (!last.finished) d.episodes.getOrNull(idx) else d.episodes.getOrNull(idx + 1) ?: d.episodes.getOrNull(idx)
     }
 
-    fun openMovie() = openStreams(PlayTarget(0, 0, detail?.card?.title ?: ""))
+    fun openMovie() = openOrPlayLocal(PlayTarget(0, 0, detail?.card?.title ?: ""))
 
-    fun openEpisode(e: Episode) = openStreams(
+    fun openEpisode(e: Episode) = openOrPlayLocal(
         PlayTarget(e.season, e.episode, "S${e.season} E${e.episode}" + (e.name?.let { " · $it" } ?: "")),
     )
+
+    /** Zdroje i u staženého (třeba pro jinou kvalitu). */
+    fun openStreamsFor(t: PlayTarget) = openStreams(t)
+
+    /** Stažené se pustí rovnou ze souboru — bez internetu a bez výběru zdroje. */
+    private fun openOrPlayLocal(t: PlayTarget) {
+        val d = downloadFor(t.season, t.episode)
+        val file = Downloads.playableFile(d)
+        if (d != null && file != null) {
+            event = PlayEvent.Local(file, t, d)
+        } else {
+            openStreams(t)
+        }
+    }
 
     fun closeStreams() {
         findJob?.cancel()

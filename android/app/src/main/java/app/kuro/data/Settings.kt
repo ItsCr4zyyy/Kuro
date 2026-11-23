@@ -27,11 +27,17 @@ class Settings(context: Context) {
         bandwidthBps = if (old == 0L) measured else (old + measured) / 2
     }
 
+    /** Stahovat jen přes Wi-Fi (nebo jinou neměřenou síť). Výchozí ano. */
+    var downloadWifiOnly: Boolean
+        get() = prefs.getBoolean(KEY_WIFI_ONLY, true)
+        set(v) = prefs.edit { putBoolean(KEY_WIFI_ONLY, v) }
+
     companion object {
         const val DEFAULT_MAX_TITLES = 3000
         val MAX_TITLES_OPTIONS = listOf(1000, 3000, 10000)
         const val IMAGE_CACHE_BYTES = 150L * 1024 * 1024
         private const val KEY_MAX_TITLES = "max_titles"
         private const val KEY_BANDWIDTH = "bandwidth_bps"
+        private const val KEY_WIFI_ONLY = "download_wifi_only"
     }
 }

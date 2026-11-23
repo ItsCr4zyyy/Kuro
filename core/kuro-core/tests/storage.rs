@@ -280,3 +280,45 @@ fn matcher_version_change_drops_cached_streams() {
     drop(db);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn downloads_lifecycle_and_pinning() {
+    use kuro_core::storage::DownloadState;
+    let (db, clock) = db();
+    let ids = db
+        .upsert_cards(&[
+            meta("tt1", "Film", MediaKind::Movie, &["Drama"], 2015),
+            meta("tt2", "Seriál", MediaKind::Series, &["Crime"], 2008),
+        ])
+        .unwrap();
+
+    let (d1, stale) = db.enqueue_download(Target::movie(ids[0]), ProviderId::Webshare, "a", "a.mkv", 1000).unwrap();
+    assert!(stale.is_none());
+    let (d2, _) = db.enqueue_download(Target::episode(ids[1], 1, 1), ProviderId::Webshare, "b", "b.mkv", 500).unwrap();
+    assert_eq!(db.pending_downloads().unwrap().len(), 2);
+
+    // Stejný zdroj znovu = stejné id; jiný zdroj nahradí rozpracované.
+    assert_eq!(db.enqueue_download(Target::movie(ids[0]), ProviderId::Webshare, "a", "a.mkv", 1000).unwrap().0, d1);
+    db.update_download(d1, DownloadState::Running, 300, None, Some("/x/a.mkv"), None).unwrap();
+    let (d1b, stale) = db.enqueue_download(Target::movie(ids[0]), ProviderId::Webshare, "c", "c.mkv", 2000).unwrap();
+    assert_ne!(d1b, d1);
+    assert_eq!(stale.as_deref(), Some("/x/a.mkv"), "starý rozpracovaný soubor ke smazání");
+
+    db.update_download(d2, DownloadState::Done, 500, Some(500), Some("/x/b.mkv"), None).unwrap();
+    let got = db.download_for(Target::episode(ids[1], 1, 1)).unwrap().unwrap();
+    assert_eq!((got.state, got.local_path.as_deref()), (DownloadState::Done, Some("/x/b.mkv")));
+    // Hotové stažení se jiným zdrojem nepřepíše.
+    assert_eq!(db.enqueue_download(Target::episode(ids[1], 1, 1), ProviderId::Webshare, "z", "z.mkv", 1).unwrap().0, d2);
+
+    let all = db.downloads().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(db.pending_downloads().unwrap().len(), 1);
+
+    // Stažené je připnuté: pročištění ho nesmaže.
+    clock.fetch_add(10 * HALF_LIFE_MS, Ordering::SeqCst);
+    db.deep_clean(Budget::default()).unwrap();
+    assert!(db.title(ids[1]).unwrap().is_some());
+
+    assert_eq!(db.delete_download(d2).unwrap().as_deref(), Some("/x/b.mkv"));
+    assert!(db.download_for(Target::episode(ids[1], 1, 1)).unwrap().is_none());
+}

@@ -209,6 +209,14 @@ class PlayerActivity : ComponentActivity() {
     /** Nový odkaz (starý mohl vypršet) a navázání na aktuální pozici. */
     private fun reload() {
         if (reloading) return
+        // Stažený soubor: nic nevyřizovat přes síť, jen otevřít znovu.
+        if (url.startsWith("/")) {
+            val at = state.position
+            state.clearFailure()
+            view.mpv.setPropertyString("start", at.toLong().toString())
+            view.mpv.command("loadfile", url)
+            return
+        }
         lifecycleScope.launch {
             reloading = true
             try {

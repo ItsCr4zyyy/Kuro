@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Jen debug build: povolit nešifrované HTTP pro testovací server na
+     vývojovém stroji (10.0.2.2). Release build HTTP zakazuje (Webshare je HTTPS). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
+</manifest>
