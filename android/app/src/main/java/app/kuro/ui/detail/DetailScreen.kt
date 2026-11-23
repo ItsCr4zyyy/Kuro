@@ -69,6 +69,8 @@ import app.kuro.player.PlayerActivity
 import app.kuro.ui.common.BadgeRow
 import app.kuro.ui.common.Loading
 import app.kuro.ui.common.Message
+import app.kuro.ui.common.estimatedBitrate
+import app.kuro.ui.common.formatBitrate
 import app.kuro.ui.common.formatPosition
 import app.kuro.ui.common.formatRuntime
 import app.kuro.ui.common.formatSize
@@ -82,7 +84,7 @@ import java.util.Locale
 @Composable
 fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
     val app = kuroApp()
-    val vm: DetailViewModel = viewModel(key = "detail-$titleId") { DetailViewModel(app.core, app.vault, titleId) }
+    val vm: DetailViewModel = viewModel(key = "detail-$titleId") { DetailViewModel(app.core, app.vault, titleId, app.settings.bandwidthBps) }
     val context = LocalContext.current
 
     LifecycleResumeEffect(Unit) {
@@ -292,8 +294,14 @@ private fun StreamsSheet(vm: DetailViewModel) {
             }
         }
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-            items(vm.streams, key = { "${it.provider}-${it.ident}" }) { s ->
-                StreamRow(s, resolving = vm.resolving == s.ident) { vm.play(s) }
+            items(vm.displayStreams, key = { "${it.provider}-${it.ident}" }) { s ->
+                StreamRow(
+                    s,
+                    resolving = vm.resolving == s.ident,
+                    bitrate = s.estimatedBitrate(vm.detail?.runtimeMin),
+                    tooHeavy = vm.tooHeavy(s),
+                    bandwidth = vm.bandwidthBits,
+                ) { vm.play(s) }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
@@ -301,7 +309,14 @@ private fun StreamsSheet(vm: DetailViewModel) {
 }
 
 @Composable
-private fun StreamRow(s: StreamInfo, resolving: Boolean, onClick: () -> Unit) {
+private fun StreamRow(
+    s: StreamInfo,
+    resolving: Boolean,
+    bitrate: Long?,
+    tooHeavy: Boolean,
+    bandwidth: Long?,
+    onClick: () -> Unit,
+) {
     val czech = s.audioLangs.any { it == "cs" || it == "sk" }
     Row(
         Modifier.fillMaxWidth().clickable(enabled = !resolving, onClick = onClick)
@@ -313,7 +328,7 @@ private fun StreamRow(s: StreamInfo, resolving: Boolean, onClick: () -> Unit) {
             BadgeRow(s.qualityBadges())
             Spacer(Modifier.height(4.dp))
             Text(
-                s.languageLine() + " · " + formatSize(s.sizeBytes),
+                s.languageLine() + " · " + formatSize(s.sizeBytes) + (bitrate?.let { " · ≈ " + formatBitrate(it) } ?: ""),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (czech) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (czech) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
@@ -321,6 +336,13 @@ private fun StreamRow(s: StreamInfo, resolving: Boolean, onClick: () -> Unit) {
             Text(s.filename, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (s.isSuspicious) {
                 Text("Opakovaně nešel přehrát", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
+            if (tooHeavy && bandwidth != null) {
+                Text(
+                    "Může sekat — tvoje připojení zvládne ≈ ${formatBitrate(bandwidth)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
         Box(Modifier.size(40.dp).clip(CircleShape), contentAlignment = Alignment.Center) {

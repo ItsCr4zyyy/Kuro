@@ -4,6 +4,8 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import `is`.xyz.mpv.MPV
@@ -45,6 +47,18 @@ class PlayerState : MPV.EventObserver {
     var tracks by mutableStateOf<List<Track>>(emptyList())
         private set
 
+    /** Naplnění mezipaměti při načítání, 0–100. */
+    var bufferPercent by mutableIntStateOf(0)
+        private set
+
+    /** Aktuální rychlost stahování (bajty/s). */
+    var downloadSpeed by mutableLongStateOf(0L)
+        private set
+
+    /** Odhad rychlosti linky během přehrávání (bajty/s), vyhlazený. */
+    var measuredBandwidth = 0L
+        private set
+
     /** Soubor se nepodařilo otevřít / přehrávání spadlo. */
     var failed by mutableStateOf<String?>(null)
         private set
@@ -65,7 +79,21 @@ class PlayerState : MPV.EventObserver {
 
     override fun eventProperty(property: String) {}
 
-    override fun eventProperty(property: String, value: Long) {}
+    override fun eventProperty(property: String, value: Long) {
+        main.post {
+            when (property) {
+                "cache-buffering-state" -> bufferPercent = value.toInt().coerceIn(0, 100)
+                "cache-speed" -> {
+                    downloadSpeed = value
+                    // Klouzavý průměr; měří se jen když se opravdu stahuje
+                    // (při plné mezipaměti mpv nestahuje a hlásí 0).
+                    if (value > 0) {
+                        measuredBandwidth = if (measuredBandwidth == 0L) value else (measuredBandwidth * 0.8 + value * 0.2).toLong()
+                    }
+                }
+            }
+        }
+    }
 
     override fun eventProperty(property: String, value: Boolean) {
         main.post {

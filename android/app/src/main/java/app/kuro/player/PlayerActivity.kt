@@ -74,6 +74,17 @@ class PlayerActivity : ComponentActivity() {
         val subtitle = intent.getStringExtra(EXTRA_SUBTITLE)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Video i do oblasti výřezu kamery — jinak je na šířku na jedné
+        // straně černý pruh a obraz i ovládání jsou posunuté.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+        }
         hideSystemBars()
 
         Utils.copyAssets(this) // cacert.pem + fonts.conf pro libass
@@ -251,9 +262,15 @@ class PlayerActivity : ComponentActivity() {
         inPip = isInPictureInPictureMode
     }
 
+    override fun onResume() {
+        super.onResume()
+        hideSystemBars()
+    }
+
     override fun onStop() {
         super.onStop()
         saveProgress()
+        (application as KuroApp).settings.recordBandwidth(state.measuredBandwidth)
         // Zavřené PiP okno nebo odchod z aplikace → pauza.
         if (!isInPictureInPictureMode) view.mpv.setPropertyBoolean("pause", true)
     }

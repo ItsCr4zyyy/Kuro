@@ -159,7 +159,7 @@ impl Provider for Webshare {
         parse_search(&xml)
     }
 
-    async fn resolve(&self, ident: &str, _purpose: LinkPurpose) -> Result<ResolvedLink> {
+    async fn resolve(&self, ident: &str, purpose: LinkPurpose) -> Result<ResolvedLink> {
         let wst = self.token().ok_or(Error::NotLoggedIn)?;
         // `video_stream` vrací přímý odkaz na celý soubor, takže poslouží
         // pro přehrávání i stažení.
@@ -169,7 +169,7 @@ impl Provider for Webshare {
                 &[
                     ("ident", ident),
                     ("wst", &wst),
-                    ("download_type", "video_stream"),
+                    ("download_type", link_type(purpose)),
                     ("device_uuid", &self.device_uuid),
                     ("force_https", "1"),
                 ],
@@ -183,6 +183,19 @@ impl Provider for Webshare {
             headers: vec![],
             expires_at_ms: Some(crate::time::now_ms() + LINK_TTL_MS),
         })
+    }
+}
+
+/// Typ odkazu u Webshare. Přepsatelný proměnnou `KURO_WS_LINK_TYPE` (jen
+/// pro měření rychlosti v CLI).
+fn link_type(purpose: LinkPurpose) -> &'static str {
+    match std::env::var("KURO_WS_LINK_TYPE").as_deref() {
+        Ok("file_download") => "file_download",
+        Ok("video_stream") => "video_stream",
+        _ => match purpose {
+            LinkPurpose::Stream => "video_stream",
+            LinkPurpose::Download => "file_download",
+        },
     }
 }
 

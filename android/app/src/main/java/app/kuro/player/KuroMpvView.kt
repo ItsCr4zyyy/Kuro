@@ -27,9 +27,14 @@ class KuroMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVView(c
         mpv.setOptionString("tls-ca-file", "${context.filesDir.path}/cacert.pem")
         mpv.setOptionString("network-timeout", "30")
         mpv.setOptionString("cache", "yes")
-        // Paměť telefonu: dopředu 96 MB, dozadu 32 MB.
-        mpv.setOptionString("demuxer-max-bytes", "${96 * 1024 * 1024}")
+        // Paměť telefonu: dopředu 128 MB, dozadu 32 MB.
+        mpv.setOptionString("demuxer-max-bytes", "${128 * 1024 * 1024}")
         mpv.setOptionString("demuxer-max-back-bytes", "${32 * 1024 * 1024}")
+        // Když se mezipaměť vyprázdní, počkat na 5 s dat (výchozí 1 s).
+        // Jinak při toku blízkém rychlosti linky přehrávač pořád
+        // "kousek zahraje, kousek čeká". A přednačíst i na začátku/po posunu.
+        mpv.setOptionString("cache-pause-wait", "5")
+        mpv.setOptionString("cache-pause-initial", "yes")
 
         // Po dohrání nezavírat soubor — UI pozná konec přes eof-reached.
         mpv.setOptionString("keep-open", "yes")
@@ -55,6 +60,8 @@ class KuroMpvView(context: Context, attrs: AttributeSet? = null) : BaseMPVView(c
             "paused-for-cache" to f.MPV_FORMAT_FLAG,
             "eof-reached" to f.MPV_FORMAT_FLAG,
             "demuxer-cache-time" to f.MPV_FORMAT_DOUBLE,
+            "cache-buffering-state" to f.MPV_FORMAT_INT64,
+            "cache-speed" to f.MPV_FORMAT_INT64,
             "track-list" to f.MPV_FORMAT_NODE,
             "aid" to f.MPV_FORMAT_STRING,
             "sid" to f.MPV_FORMAT_STRING,

@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,11 +47,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,7 +102,7 @@ fun PlayerScreen(
     var level by remember { mutableFloatStateOf(0f) }
     var doubleTapHint by remember { mutableStateOf<String?>(null) }
 
-    BackHandler { actions.close() }
+    BackHandler { if (tracksOpen) tracksOpen = false else actions.close() }
 
     // Ovládání se samo schová, když se přehrává.
     LaunchedEffect(controls, interaction, state.paused, tracksOpen) {
@@ -188,7 +189,19 @@ fun PlayerScreen(
 
         // Načítání
         if ((state.buffering || reloading) && state.failed == null) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center).size(56.dp), color = MaterialTheme.colorScheme.primary)
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(Modifier.size(56.dp), color = MaterialTheme.colorScheme.primary)
+                if (state.loaded && !reloading) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Načítám ${state.bufferPercent} %" +
+                            if (state.downloadSpeed > 0) " · ${formatMbit(state.downloadSpeed)}" else "",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
 
         // Ukazatele gest
@@ -237,10 +250,23 @@ fun PlayerScreen(
                 actions = actions,
             )
         }
-    }
 
-    if (tracksOpen) {
-        TracksSheet(state, actions, onDismiss = { tracksOpen = false })
+        // Panel stop vpravo — uvnitř obrazovky, ne jako samostatné okno
+        // (bottom sheet otevíral vlastní okno a vracel systémové lišty).
+        if (tracksOpen) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) { tracksOpen = false })
+        }
+        AnimatedVisibility(
+            tracksOpen,
+            enter = slideInHorizontally { it },
+            exit = slideOutHorizontally { it },
+            modifier = Modifier.align(Alignment.CenterEnd),
+        ) {
+            TracksPanel(state, actions)
+        }
     }
 }
 
@@ -372,6 +398,9 @@ private fun LevelIndicator(icon: ImageVector, level: Float, modifier: Modifier) 
     }
 }
 
+/** Bajty/s → "12 Mbit/s". */
+private fun formatMbit(bytesPerSec: Long): String = "%.0f Mbit/s".format(java.util.Locale.ROOT, bytesPerSec * 8 / 1e6)
+
 private fun trackLabel(t: Track): String {
     val lang = t.lang?.let { langLabel(isoFromMpv(it)) }
     val parts = listOfNotNull(
@@ -396,10 +425,16 @@ private fun isoFromMpv(lang: String): String = when (lang.lowercase()) {
 }
 
 @Composable
-private fun TracksSheet(state: PlayerState, actions: PlayerActions, onDismiss: () -> Unit) {
-    // Na šířku je málo místa — panel rovnou celý, ne do poloviny.
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        LazyColumn(Modifier.padding(bottom = 24.dp)) {
+private fun TracksPanel(state: PlayerState, actions: PlayerActions) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxHeight().width(360.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+        // Průhledná barva není ve schématu, takže contentColorFor() by
+        // vrátil tmavý text — nastavit výslovně.
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
+    ) {
+        LazyColumn(Modifier.safeDrawingPadding().padding(vertical = 12.dp)) {
             item { SheetHeader("Zvuk") }
             if (state.audioTracks.isEmpty()) item { SheetNote("Žádná zvuková stopa") }
             items(state.audioTracks, key = { "a${it.id}" }) { t ->

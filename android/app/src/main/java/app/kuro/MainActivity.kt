@@ -14,7 +14,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { KuroTheme { KuroRoot() } }
-        debugPlay()
+        debugPlay(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        debugPlay(intent)
     }
 
     /**
@@ -22,7 +27,7 @@ class MainActivity : ComponentActivity() {
      * přes adb:  adb shell am start -n app.kuro.debug/app.kuro.MainActivity
      *            --es kuro_debug_play_url <url>
      */
-    private fun debugPlay() {
+    private fun debugPlay(intent: android.content.Intent) {
         if (!BuildConfig.DEBUG) return
         val url = intent.getStringExtra("kuro_debug_play_url") ?: return
         app.kuro.player.PlayerActivity.start(

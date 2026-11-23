@@ -66,3 +66,18 @@ fun StreamInfo.qualityBadges(): List<String> = buildList {
 
 /** Zdroj, kterému se dá věřit méně (opakovaně nešel pustit). */
 val StreamInfo.isSuspicious: Boolean get() = failCount >= 2 && okCount == 0
+
+/**
+ * Odhad datového toku zdroje (bity/s) z velikosti a délky titulu.
+ * null = délku neznáme.
+ */
+fun StreamInfo.estimatedBitrate(runtimeMin: Int?): Long? {
+    if (runtimeMin == null || runtimeMin <= 0 || sizeBytes <= 0) return null
+    return sizeBytes * 8 / (runtimeMin * 60L)
+}
+
+/** Bity/s → "18 Mbit/s". */
+fun formatBitrate(bitsPerSec: Long): String = String.format(Locale.ROOT, "%.0f Mbit/s", bitsPerSec / 1e6)
+
+/** Rezerva: zdroj s tokem nad 85 % rychlosti linky bude nejspíš sekat. */
+const val BANDWIDTH_HEADROOM = 0.85

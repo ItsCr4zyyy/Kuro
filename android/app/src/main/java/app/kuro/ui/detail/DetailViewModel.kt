@@ -16,6 +16,8 @@ import app.kuro.core.StreamInfo
 import app.kuro.core.StreamListener
 import app.kuro.core.TitleDetail
 import app.kuro.data.TokenVault
+import app.kuro.ui.common.BANDWIDTH_HEADROOM
+import app.kuro.ui.common.estimatedBitrate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -32,6 +34,8 @@ class DetailViewModel(
     private val core: KuroCore,
     private val vault: TokenVault,
     val titleId: Long,
+    /** Naměřená rychlost připojení v bajtech/s (0 = neznámá). */
+    private val bandwidthBps: Long,
 ) : ViewModel() {
     var detail by mutableStateOf<TitleDetail?>(null)
         private set
@@ -45,6 +49,23 @@ class DetailViewModel(
         private set
     var streams by mutableStateOf<List<StreamInfo>>(emptyList())
         private set
+
+    /** Rychlost linky v bitech/s, nebo null když ji ještě neznáme. */
+    val bandwidthBits: Long? get() = (bandwidthBps * 8).takeIf { it > 0 }
+
+    /** Zdroj má vyšší datový tok, než linka nejspíš zvládne. */
+    fun tooHeavy(s: StreamInfo): Boolean {
+        val bw = bandwidthBits ?: return false
+        val rate = s.estimatedBitrate(detail?.runtimeMin) ?: return false
+        return rate > bw * BANDWIDTH_HEADROOM
+    }
+
+    /**
+     * Zdroje k zobrazení: pořadí z core (čeština, kvalita, funkčnost),
+     * ale ty, které by na téhle lince sekaly, až za těmi, které ne.
+     */
+    val displayStreams: List<StreamInfo>
+        get() = streams.partition { !tooHeavy(it) }.let { (ok, heavy) -> ok + heavy }
     var searching by mutableStateOf(false)
         private set
     var streamError by mutableStateOf<String?>(null)
