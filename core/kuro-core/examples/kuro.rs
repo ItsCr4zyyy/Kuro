@@ -177,6 +177,26 @@ async fn main() -> R<()> {
             }
         }
 
+        // Surové výsledky hledání na Webshare + jak je vidí parser a párovač.
+        ["ws", q @ ..] => {
+            let ws = webshare(http.clone(), false).await?;
+            let opts = kuro_core::providers::SearchOptions {
+                limit: 40,
+                // KURO_SORT=relevance|largest|recent|rating (výchozí largest)
+                sort: match std::env::var("KURO_SORT").as_deref() {
+                    Ok("relevance") => kuro_core::providers::SearchSort::Relevance,
+                    Ok("recent") => kuro_core::providers::SearchSort::Recent,
+                    Ok("rating") => kuro_core::providers::SearchSort::Rating,
+                    _ => kuro_core::providers::SearchSort::Largest,
+                },
+                ..Default::default()
+            };
+            for f in ws.search(&q.join(" "), &opts).await? {
+                let p = kuro_core::matcher::parse_release(&f.name);
+                println!("{:>8}  {:<70} → {:?} S{:?}E{:?}", gb(f.size_bytes), f.name, p.title_norm, p.season, p.episode);
+            }
+        }
+
         ["account"] => {
             let ws = webshare(http, true).await?;
             println!("{:?}", ws.account().await?);

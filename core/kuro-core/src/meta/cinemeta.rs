@@ -48,9 +48,9 @@ pub fn type_path(kind: MediaKind) -> &'static str {
 pub enum CatalogId {
     /// Populární.
     Top,
-    /// Nejlépe hodnocené / doporučené.
+    /// "Featured" — doporučené (Cinemeta je řadí podle hodnocení a popularity).
     ImdbRating,
-    /// Podle roku (novinky).
+    /// Novinky: povinný parametr `genre` = rok ("2026").
     Year,
 }
 

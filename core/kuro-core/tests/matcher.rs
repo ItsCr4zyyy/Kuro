@@ -320,3 +320,84 @@ fn languages_direct() {
     let d = detect_languages("1080p x265");
     assert!(d.audio.is_empty() && d.subs.is_empty() && !d.explicit);
 }
+
+/* -------------------- opravy z živých dat (Kuro) -------------------- */
+
+#[test]
+fn other_part_of_series_is_rejected() {
+    // Živě: "Duna - Part One" prošla k Části druhé s confidence 0.68.
+    let res = score_match(&parse_release("Duna - Part One CZ (4KHDR).mkv"), &dune());
+    assert_eq!(res.rejected.as_deref(), Some("jiný díl série"), "{res:?}");
+
+    // Stejný díl dál prochází, i česky slovy i číslem.
+    for f in ["Duna - Part Two CZ (4KHDR).mkv", "Duna.Cast.druha.2024.1080p.mkv", "Duna 2 (2024) CZ.mkv"] {
+        let res = score_match(&parse_release(f), &dune());
+        assert!(res.rejected.is_none() && res.confidence >= MIN_CONFIDENCE, "{f}: {res:?}");
+    }
+
+    // Titul bez čísla dílu se číslem v souboru nenechá zmást (rozhoduje rok).
+    let res = score_match(&parse_release("Interstellar.2014.Part.1.1080p.mkv"), &interstellar());
+    assert_ne!(res.rejected.as_deref(), Some("jiný díl série"));
+}
+
+#[test]
+fn glued_4khdr() {
+    let p = parse_release("Duna - Part Two CZ (4KHDR).mkv");
+    assert_eq!(p.height, Some(2160));
+    assert_eq!(p.hdr, Some(Hdr::Hdr10));
+}
+
+#[test]
+fn cs_is_czech() {
+    let p = parse_release("Dune.Part.Two.2024.1080p.CS.dabing.mkv");
+    assert_eq!(p.audio_langs, s(&["cs"]));
+}
+
+#[test]
+fn subtitle_only_file_names_match_series() {
+    // Živě: soubory "The Rings of Power S03E01 …" k titulu
+    // "The Lord of the Rings: The Rings of Power" (2022), epizody z roku 2026.
+    let target = MatchTarget {
+        title_cs: "Pán prstenů: Prsteny moci".into(),
+        title_orig: "The Lord of the Rings: The Rings of Power".into(),
+        aliases: vec![],
+        year: Some(2022),
+        runtime: Some(67),
+        kind: MediaKind::Series,
+        season: Some(3),
+        episode: Some(1),
+    };
+    for f in [
+        "The Rings of Power S03E01 Marnûkh (2026) CZ.avi",
+        "The.Lord.of.the.Rings.The.Rings.of.Power.S03E01.Marnukh.AMZN.SDR.WEB-DL.2160p.by.AKTEP.mkv",
+        "Prsteny moci S03E01 CZ.mkv",
+    ] {
+        let res = score_match(&parse_release(f), &target);
+        assert!(res.rejected.is_none() && res.confidence >= MIN_CONFIDENCE, "{f}: {res:?}");
+    }
+    // Jiná epizoda dál neprojde.
+    assert!(score_match(&parse_release("The Rings of Power S03E02 (2026) CZ.avi"), &target).rejected.is_some());
+}
+
+#[test]
+fn short_subtitles_are_not_candidates() {
+    // "Part Two" ani "Impossible" nesmí samy o sobě matchovat.
+    let mi = MatchTarget {
+        title_cs: "Mission: Impossible".into(),
+        title_orig: "Mission: Impossible".into(),
+        aliases: vec![],
+        year: Some(1996),
+        runtime: Some(110),
+        kind: MediaKind::Movie,
+        season: None,
+        episode: None,
+    };
+    assert!(score_match(&parse_release("Impossible.1996.1080p.mkv"), &mi).rejected.is_some());
+    assert!(score_match(&parse_release("Part.Two.2024.1080p.mkv"), &dune()).rejected.is_some());
+}
+
+#[test]
+fn movie_year_mismatch_still_rejects() {
+    let res = score_match(&parse_release("Interstellar.2019.1080p.mkv"), &interstellar());
+    assert!(res.rejected.as_deref().is_some_and(|r| r.starts_with("rok nesedí")));
+}

@@ -22,6 +22,11 @@ private val scheme = darkColorScheme(
     primaryContainer = KuroColors.AccentDim,
     onPrimaryContainer = Color.White,
     secondary = KuroColors.Accent,
+    // Vybrané chipy a indikátor ve spodní liště používají secondaryContainer;
+    // výchozí je fialový, Kuro je karmínové.
+    secondaryContainer = KuroColors.AccentDim,
+    onSecondaryContainer = Color.White,
+    tertiary = KuroColors.Accent,
     background = KuroColors.Background,
     onBackground = KuroColors.OnSurface,
     surface = KuroColors.Surface,

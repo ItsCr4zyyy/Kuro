@@ -94,7 +94,8 @@ static STOP_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
 
 static RESOLUTION: Table<u16> = LazyLock::new(|| {
     table(&[
-        (r"\b(4k|uhd|2160p?)\b", 2160),
+        // "4KHDR" / "4KUHD" bývají slepené bez oddělovače.
+        (r"\b(4k|4khdr|4kuhd|uhd|2160p?)\b", 2160),
         (r"\b1440p\b", 1440),
         (r"\b(fullhd|fhd|1080[pi]?)\b", 1080),
         (r"\b(hd|720[pi]?)\b", 720),
@@ -174,7 +175,7 @@ static CHANNELS: LazyLock<Regex> = LazyLock::new(|| rx(r"\b([578])[\s._-]?1\b"))
 static STEREO: LazyLock<Regex> = LazyLock::new(|| rx(r"\b2[\s._-]?0\b"));
 static DV: LazyLock<Regex> = LazyLock::new(|| rx(r"\b(dv|dovi|dolby[\s-]?vision)\b"));
 static HDR10P: LazyLock<Regex> = LazyLock::new(|| rx(r"\bhdr10\+|\bhdr\+\b"));
-static HDR10: LazyLock<Regex> = LazyLock::new(|| rx(r"\bhdr(10)?\b"));
+static HDR10: LazyLock<Regex> = LazyLock::new(|| rx(r"\b(4k)?hdr(10)?\b"));
 
 fn num(m: Option<regex::Match<'_>>) -> Option<u16> {
     m.and_then(|m| m.as_str().parse().ok())

@@ -17,10 +17,10 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 | Část | Stav |
 |---|---|
 | Rust core: parser názvů, jazyky, párování, Webshare login hash | ✅ hotovo, testy |
-| Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ✅ hledání ověřeno živě, login čeká na test |
+| Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ✅ ověřeno živě (login, VIP, odkazy) |
 | Lokální databáze (malá, plní se podle zájmu), napojení na Android (UniFFI) | ✅ hotovo, testy |
-| UI (Jetpack Compose) | ⏳ další krok |
-| Přehrávač (mpv) | — |
+| UI: Domů, hledání, detail se sezónami a zdroji, knihovna, přihlášení, nastavení | ✅ hotovo (přehrávání zatím v externím přehrávači) |
+| Přehrávač (mpv) | ⏳ další krok |
 | Doporučení podle vkusu (na zařízení) | — |
 | Stahování offline | — |
 | Přehraj.to, anime (AniList, české titulky) | — |

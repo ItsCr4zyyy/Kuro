@@ -29,7 +29,7 @@ pub struct DetectedLanguages {
 /// Token -> ISO 639-1. Klíče jsou lowercase.
 fn lang_token(token: &str) -> Option<&'static str> {
     Some(match token {
-        "cz" | "cze" | "ces" | "czech" | "cesky" | "ceske" | "cestina" => "cs",
+        "cz" | "cs" | "cze" | "ces" | "czech" | "cesky" | "ceske" | "cestina" => "cs",
         "sk" | "svk" | "slo" | "slovak" | "slovensky" | "slovenske" | "slovencina" => "sk",
         "en" | "eng" | "english" | "anglicky" => "en",
         "de" | "ger" | "deu" | "german" | "deutsch" | "nemecky" => "de",

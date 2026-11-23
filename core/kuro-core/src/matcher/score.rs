@@ -48,10 +48,16 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
     }
 
     // --- 1. Název --------------------------------------------------
-    let candidates: Vec<String> = [&target.title_orig, &target.title_cs]
+    let names: Vec<&str> = [&target.title_orig, &target.title_cs]
         .into_iter()
         .chain(target.aliases.iter())
+        .map(String::as_str)
         .filter(|t| !t.is_empty())
+        .collect();
+    let candidates: Vec<String> = names
+        .iter()
+        .copied()
+        .chain(names.iter().filter_map(|t| subtitle_of(t)))
         .flat_map(|t| {
             let norm = normalize_title(t);
             [normalize_numerals(&norm), normalize_loose(&norm), norm]
@@ -69,8 +75,16 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
     .collect();
 
     let mut title_score: f64 = 0.0;
+    let mut sequel_conflict = false;
     for c in &candidates {
         for p in &parsed_variants {
+            // Jiný díl série: "Duna Part One" není "Dune Part Two", i když se
+            // názvy liší o pár písmen. Platí jen když číslo dílu nesou oba.
+            let (pn, cn) = (sequel_numbers(p), sequel_numbers(c));
+            if !pn.is_empty() && !cn.is_empty() && pn != cn {
+                sequel_conflict = true;
+                continue;
+            }
             let mut s = similarity(p, c);
             // Soubor občas nese zkrácený název. Prefixovou shodu netrestáme
             // jako překlep. Opačný směr NE: "Interstellar Documentary"
@@ -86,6 +100,9 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
     }
 
     if title_score < 0.62 {
+        if sequel_conflict {
+            return MatchResult::reject(vec![], "jiný díl série".into());
+        }
         return MatchResult::reject(vec![], format!("název nesedí ({title_score:.2})"));
     }
     reasons.push(format!("název {title_score:.2}"));
@@ -107,6 +124,12 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
             2 if target.kind == MediaKind::Series => {
                 year_score = 0.6;
                 reasons.push("rok ±2 (seriál)".into());
+            }
+            // Epizoda seriálu se správným SxxExx: rok v názvu bývá rok
+            // vysílání epizody (3. sezóna z roku 2026 seriálu z 2022),
+            // ne rok seriálu. Neutrální, ne důvod zamítnout.
+            _ if target.kind == MediaKind::Series && target.episode.is_some() && parsed.episode.is_some() => {
+                reasons.push("rok epizody".into());
             }
             _ => return MatchResult::reject(reasons, format!("rok nesedí ({py} vs {ty})")),
         }
@@ -154,6 +177,41 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
             .clamp(0.0, 1.0);
 
     MatchResult { confidence, reasons, rejected: None }
+}
+
+/// Podtitul za dvojtečkou jako samostatný název: soubory se často jmenují
+/// jen "The Rings of Power" místo "The Lord of the Rings: The Rings of Power".
+/// Jen dostatečně dlouhý — "Part Two" nebo "Impossible" by matchovaly
+/// cokoli.
+pub(crate) fn subtitle_of(title: &str) -> Option<&str> {
+    let (_, sub) = title.split_once(':')?;
+    let sub = sub.trim();
+    let norm = normalize_title(sub);
+    (norm.split(' ').count() >= 3 || norm.len() >= 12).then_some(sub)
+}
+
+/// Čísla dílů v normalizovaném názvu: číslice, anglické a české
+/// číslovky ("two", "druha"), římské číslice (přes `normalize_numerals`).
+fn sequel_numbers(norm: &str) -> Vec<u8> {
+    let mut out: Vec<u8> = normalize_numerals(norm)
+        .split(' ')
+        .filter_map(|w| match w {
+            "one" | "prvni" | "prvy" => Some(1),
+            "two" | "druha" | "druhy" | "druhe" => Some(2),
+            "three" | "treti" => Some(3),
+            "four" | "ctvrta" | "ctvrty" | "ctvrte" => Some(4),
+            "five" | "pata" | "paty" | "pate" => Some(5),
+            "six" | "sesta" | "sesty" => Some(6),
+            "seven" | "sedma" | "sedmy" => Some(7),
+            "eight" | "osma" | "osmy" => Some(8),
+            "nine" | "devata" | "devaty" => Some(9),
+            w if (1..=2).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_digit()) => w.parse().ok(),
+            _ => None,
+        })
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
 }
 
 fn fmt_opt(v: Option<u16>) -> String {

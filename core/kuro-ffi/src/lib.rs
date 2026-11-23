@@ -98,6 +98,11 @@ impl KuroCore {
             Catalog::TopRated => CatalogId::ImdbRating,
             Catalog::New => CatalogId::Year,
         };
+        // Katalog "year" (Novinky) má povinný parametr = rok, ne žánr.
+        let genre = match (catalog, genre) {
+            (Catalog::New, None) => Some(kuro_core::time::current_year().to_string()),
+            (_, g) => g,
+        };
         let metas = self.cinemeta.catalog(kind.into(), id, genre.as_deref(), skip.max(0) as u32).await?;
         self.store_cards(&metas)
     }
@@ -313,6 +318,7 @@ impl KuroCore {
     }
 
     /// Uloží pozici (volat každých ~10 s a při zavření přehrávače).
+    #[allow(clippy::too_many_arguments)] // plochý podpis pro Kotlin
     pub fn save_progress(
         &self,
         title_id: i64,
@@ -332,6 +338,12 @@ impl KuroCore {
 
     pub fn progress(&self, title_id: i64, season: i32, episode: i32) -> Result<Option<ProgressInfo>> {
         Ok(self.db.progress(target(title_id, season, episode))?.as_ref().map(ProgressInfo::from))
+    }
+
+    /// Pozice v titulu (u seriálu po epizodách) — levné, bez sítě a bez
+    /// zápisu události (na rozdíl od `title_detail`).
+    pub fn title_progress(&self, title_id: i64) -> Result<Vec<ProgressInfo>> {
+        Ok(self.db.title_progress(title_id)?.iter().map(ProgressInfo::from).collect())
     }
 
     pub fn continue_watching(&self, limit: i32) -> Result<Vec<ContinueItem>> {

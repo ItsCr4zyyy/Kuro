@@ -90,10 +90,16 @@ pub fn movie_queries(t: &MatchTarget) -> Vec<String> {
     if cs != orig {
         add(cs.to_owned());
     }
+    if let Some(sub) = crate::matcher::score::subtitle_of(orig) {
+        add(match t.year {
+            Some(y) => format!("{sub} {y}"),
+            None => sub.to_owned(),
+        });
+    }
     for a in &t.aliases {
         add(a.trim().to_owned());
     }
-    out.truncate(4);
+    out.truncate(5);
     out
 }
 
@@ -105,6 +111,10 @@ pub fn episode_queries(t: &MatchTarget, season: u16, episode: u16) -> Vec<String
     let mut out = vec![format!("{orig} {tag}")];
     if cs != orig {
         out.push(format!("{cs} {tag}"));
+    }
+    // Soubory často nesou jen podtitul: "The Rings of Power S03E01".
+    if let Some(sub) = crate::matcher::score::subtitle_of(orig) {
+        out.push(format!("{sub} {tag}"));
     }
     out.push(format!("{orig} {season}x{episode:02}"));
     out
@@ -311,7 +321,7 @@ mod tests {
     fn movie_query_order() {
         assert_eq!(
             movie_queries(&target()),
-            vec!["Dune: Part Two 2024", "Duna: Část druhá 2024", "Dune: Part Two", "Duna: Část druhá"]
+            vec!["Dune: Part Two 2024", "Duna: Část druhá 2024", "Dune: Part Two", "Duna: Část druhá", "Duna 2"]
         );
     }
 
@@ -385,7 +395,7 @@ mod tests {
 
         let idents: Vec<&str> = report.streams.iter().map(|s| s.ident.as_str()).collect();
         assert_eq!(idents, vec!["b", "a"], "{:#?}", report.rejected);
-        assert_eq!(report.queries, 4);
+        assert_eq!(report.queries, 5);
         assert!(report.errors.is_empty());
         assert!(calls.load(std::sync::atomic::Ordering::Relaxed) >= 1);
     }
