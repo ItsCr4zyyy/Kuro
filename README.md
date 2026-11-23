@@ -1,43 +1,53 @@
 # Kuro – filmy, seriály a anime pro Android
 
-> **Soukromý projekt, ve vývoji.** Aplikace vzniká pro vlastní potřebu a pár kamarádů. Zatím neexistuje
-> žádná vydaná verze. Používání je na vlastní riziko.
+> **Soukromý projekt.** Aplikace vzniká pro vlastní potřebu a pár kamarádů. Používání je na vlastní riziko.
 
-Nativní Android přehrávač nad **vlastním účtem u úložiště** (Webshare) a zdroji bez přihlášení (Přehraj.to, Hellspy).
-Katalog z veřejných metadat (Cinemeta, Wikidata, AniList), vyhledání zdrojů, přehrávání a stahování
-pro offline sledování.
+Kuro najde k filmu, seriálu nebo anime soubory na úložištích, seřadí je podle jazyka a kvality a přehraje
+je ve vestavěném přehrávači. Bez účtu hraje ze zdrojů **Přehraj.to** a **Hellspy**, s vlastním účtem
+**Webshare** i v původní kvalitě (4K, HDR, všechny zvukové stopy).
 
 **Všechno běží v zařízení.** Kuro nemá žádný vlastní server ani cloud. Historie, rozkoukané pozice,
 oblíbené, cache i stažené soubory zůstávají jen v telefonu. Ven jdou jen dotazy, bez kterých to nejde:
-katalog (Cinemeta, Wikidata, AniList) a přihlášení a hledání u zvoleného úložiště. Heslo se neukládá,
+katalog (Cinemeta, Wikidata, AniList) a hledání u zapnutých zdrojů. Heslo k Webshare se neukládá,
 v zařízení zůstává jen přihlašovací token zašifrovaný přes Android Keystore.
 
-## Stav
+## Stažení
 
-| Část | Stav |
-|---|---|
-| Rust core: parser názvů, jazyky, párování, Webshare login hash | ✅ hotovo, testy |
-| Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ✅ ověřeno živě (login, VIP, odkazy) |
-| Lokální databáze (malá, plní se podle zájmu), napojení na Android (UniFFI) | ✅ hotovo, testy |
-| UI: Domů, hledání, detail se sezónami a zdroji, knihovna, přihlášení, nastavení | ✅ hotovo |
-| Přehrávač mpv: gesta, stopy, ASS titulky, navázání, obraz v obraze | ✅ hotovo, ověřeno na emulátoru |
-| Stahování offline: na pozadí, navázání po výpadku, celé sezóny, přehrávání bez internetu | ✅ hotovo, ověřeno na emulátoru |
-| Doporučení podle vkusu (na zařízení), další díl v Pokračovat, kontrola nových dílů | ✅ hotovo |
-| Záloha a obnova knihovny (JSON), konec filmu podle titulků | ✅ hotovo |
-| Zdroje bez účtu: Přehraj.to, Hellspy (převody do 1080p, titulky, slučování duplicit) | ✅ hotovo, ověřeno na emulátoru |
-| Anime z AniListu: katalog (trendy, sezóna, hodnocení, filmy), romaji názvy pro párování, převod na IMDb přes Wikidata | ✅ hotovo |
-| České titulky k anime (Hiyori) | — |
+APK je v [GitHub Releases](https://github.com/ItsCr4zyyy/Kuro/releases/latest) (`kuro.apk`, Android 8+).
 
-## Plánované funkce
-- Oddělené sekce **Filmy**, **Seriály** (série → epizody) a **Anime**, hledání s diakritikou i bez.
-- Detail titulu: popis, hodnocení, výběr zdroje podle kvality, kodeku, jazyka zvuku a titulků.
-  Zdroje s českým dabingem a titulky mají přednost před rozlišením.
-- Přehrávač postavený na **mpv**: MKV, MP4, AVI (Xvid/DivX), HLS, hardwarové dekódování, zvuk AC3/EAC3/DTS/TrueHD,
-  přepínání zvukových stop, interní i externí titulky včetně plně stylovaných ASS pro anime, gesta (jas,
-  hlasitost, posun), navázání tam, kde jsi skončil.
-- Malá databáze, která se plní jen tím, co tě zajímá, a sama se uklízí. V nastavení „Pročistit paměť“.
-- Doporučení podle vkusu počítaná v telefonu (žánry, období, dabing vs. titulky), bez sdílení dat.
-- Stahování filmů a celých sérií pro offline sledování.
+## Co umí
+
+**Katalog a hledání**
+- Domovská stránka se sekcemi Vše, Filmy, Seriály a Anime; řady populárních, nových a nejlépe hodnocených titulů.
+- Anime z AniListu: trendy, aktuální sezóna, nejlépe hodnocené, nejoblíbenější, filmy.
+- Hledání s diakritikou i bez, české názvy z Wikidat, anime i podle japonského názvu (romaji).
+- Druhy obsahu, které nechceš (třeba filmy), jde v nastavení skrýt.
+
+**Zdroje**
+- Přehraj.to a Hellspy bez účtu (převody do 1080p, titulky od zdroje), Webshare s účtem.
+- Každý zdroj jde v nastavení vypnout.
+- Párování souborů podle názvu, roku, sezóny a dílu (i české a romaji názvy), kontrola délky,
+  detekce dabingu a titulků. Stejné soubory nahrané víckrát se slučují.
+- Zdroje, které opakovaně nejdou pustit, klesají v pořadí.
+
+**Přehrávač** ([mpv](https://mpv.io))
+- MKV, MP4, AVI (Xvid/DivX), hardwarové dekódování, zvuk AC3/EAC3/DTS/TrueHD.
+- Přepínání zvukových stop a titulků, plně stylované ASS titulky pro anime, titulky ze souboru.
+- Gesta: jas, hlasitost, posun, dvojklepnutí ±10 s. Obraz v obraze.
+- Navázání tam, kde jsi skončil. Konec filmu se pozná podle titulků (kapitola titulků nebo posledních
+  8 minut), takže dokoukaný film nezůstane v „Pokračovat“.
+
+**Knihovna**
+- Pokračovat ve sledování (u seriálů nabídne další díl), rozkoukané, oblíbené.
+- Stahování filmů i celých sezón na pozadí, navázání po výpadku, přehrávání bez internetu,
+  titulky se stáhnou s videem. Volitelně jen přes Wi-Fi.
+- Doporučení podle vkusu počítaná v telefonu (žánry, období, dabing vs. titulky).
+- Záloha a obnova do JSON souboru (oblíbené, pozice, vkus, nastavení) — pro přechod na nový telefon.
+- Malá databáze, která se plní jen tím, co tě zajímá, a sama se uklízí; v nastavení „Pročistit paměť“.
+
+**Televize**
+- Přehrávání na TV v domácí síti: Google Cast (Chromecast, Google TV) a DLNA (LG, Samsung a další).
+  Telefon slouží jako ovladač a ukládá pozici.
 
 ## Architektura
 
@@ -45,13 +55,14 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 core/                   Rust – logika bez závislosti na Androidu (testuje se `cargo test`)
   kuro-core/
     src/matcher/          parser názvů souborů, detekce jazyků, párování a řazení zdrojů
-    src/providers/        úložiště (Webshare, Přehraj.to, Hellspy)
-    src/meta/             Cinemeta, Wikidata
+    src/providers/        zdroje (Webshare, Přehraj.to, Hellspy)
+    src/meta/             Cinemeta, Wikidata, AniList
     src/finder.rs         vyhledání zdrojů k titulu/epizodě
-    src/storage/          SQLite: katalog ve vrstvách, zájem, vkus, cache zdrojů, knihovna, úklid
+    src/recommend.rs      doporučení podle vkusu
+    src/storage/          SQLite: katalog ve vrstvách, zájem, vkus, cache zdrojů, knihovna, záloha, úklid
     examples/kuro.rs      CLI pro ruční ověření
   kuro-ffi/               UniFFI fasáda (`KuroCore`) → libkuro_ffi.so + Kotlin bindingy
-android/                Kotlin – Jetpack Compose UI, přehrávač, stahování
+android/                Kotlin – Jetpack Compose UI, přehrávač mpv, stahování, televize
 ```
 
 Gradle při buildu sám přeloží Rust přes `cargo-ndk` (`arm64-v8a`, `armeabi-v7a`, `x86_64`) a vygeneruje
@@ -63,17 +74,17 @@ Potřeba: Rust (`rustup target add aarch64-linux-android armv7-linux-androideabi
 `cargo install cargo-ndk`, Android SDK s NDK 29.0.14206865, Android Studio.
 
 ```bash
-cd core && cargo test                 # logika, offline
-cd android && ./gradlew assembleDebug # APK (Rust se přeloží automaticky)
+cd core && cargo test                   # logika, offline
+cd android && ./gradlew assembleRelease # APK do app/build/outputs/apk/release/
 ```
 
 Nebo otevři složku `android/` v Android Studiu a dej **Run**.
 
 ## Poznámky
 - Přehrávač je [mpv](https://mpv.io) přes knihovnu [mpv-android-lib](https://github.com/abdallahmehiz/mpv-android) (MIT) s FFmpeg a libass.
-- Kuro není spojené s Webshare, Stremiem, Wikidaty, AniListem ani jinou službou.
-- Logika párování souborů vychází z projektu NSC.
-- K přehrávání je potřeba vlastní účet u úložiště. Kuro nic nehostuje ani neproxuje.
+- Přehrávání na TV přes Google Cast používá knihovnu Google Play služeb.
+- Kuro není spojené s Webshare, Přehraj.to, Hellspy, Stremiem, Wikidaty, AniListem ani jinou službou
+  a nic nehostuje. Logika párování souborů vychází z projektu NSC.
 
 ## Licence
 

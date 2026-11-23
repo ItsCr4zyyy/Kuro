@@ -24,3 +24,6 @@ android/app/src/main/jniLibs/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+
+# Vydané APK (nahrávají se do GitHub Releases)
+dist/
