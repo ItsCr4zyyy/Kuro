@@ -51,6 +51,14 @@ class Settings(context: Context) {
             .mapNotNull { n -> ContentKind.entries.find { it.name == n } }.toSet()
         set(v) = prefs.edit { putStringSet(KEY_HIDDEN_CONTENT, v.map { it.name }.toSet()) }
 
+    /**
+     * Webshare je nově ve výchozím stavu vypnutý. Kdo už je přihlášený a
+     * přepínače nikdy neměnil, o něj po aktualizaci nepřijde.
+     */
+    fun keepWebshareForLoggedIn(loggedIn: Boolean) {
+        if (loggedIn && !prefs.contains(KEY_DISABLED_PROVIDERS)) disabledProviders = emptySet()
+    }
+
     /** Ukázat titul? Anime se řídí přepínačem Anime, ne Filmy/Seriály. */
     fun shows(kind: MediaKind, anime: Boolean): Boolean {
         val c = when {

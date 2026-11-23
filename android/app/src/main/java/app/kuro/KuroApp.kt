@@ -45,6 +45,7 @@ class KuroApp : Application(), SingletonImageLoader.Factory {
         val dbFile = getDatabasePath("kuro.db").apply { parentFile?.mkdirs() }
         core = KuroCore(dbFile.absolutePath, deviceId)
         core.setWebshareToken(vault.load(TokenVault.WEBSHARE))
+        settings.keepWebshareForLoggedIn(core.isWebshareLoggedIn())
         core.setDisabledProviders(settings.disabledProviders.toList())
 
         MaintenanceWorker.schedule(this)
