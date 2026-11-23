@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["kuro-core"]
+members = ["kuro-core", "kuro-ffi", "uniffi-bindgen"]
 
 [workspace.package]
 edition = "2021"

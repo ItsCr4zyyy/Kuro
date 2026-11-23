@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Okno před startem Compose: rovnou tmavé, ať nebliká bílá. -->
+    <style name="Theme.Kuro" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/kuro_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

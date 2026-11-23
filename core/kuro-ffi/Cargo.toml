@@ -1,0 +1,17 @@
+[package]
+name = "kuro-ffi"
+description = "Kuro: UniFFI facade over kuro-core for Android (Kotlin)."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+# cdylib = libkuro_ffi.so pro Android; lib kvůli testům.
+crate-type = ["cdylib", "lib"]
+name = "kuro_ffi"
+
+[dependencies]
+kuro-core = { path = "../kuro-core" }
+uniffi = { version = "0.32", features = ["tokio"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros"] }

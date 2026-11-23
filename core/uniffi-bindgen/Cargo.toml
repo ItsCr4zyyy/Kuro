@@ -1,0 +1,14 @@
+[package]
+name = "uniffi-bindgen"
+description = "Generátor Kotlin bindingů pro kuro-ffi (běží jen na vývojovém stroji)."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "main.rs"
+
+[dependencies]
+uniffi = { version = "0.32", features = ["cli"] }

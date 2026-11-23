@@ -18,9 +18,10 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 |---|---|
 | Rust core: parser názvů, jazyky, párování, Webshare login hash | ✅ hotovo, testy |
 | Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ✅ hledání ověřeno živě, login čeká na test |
-| Lokální databáze, napojení na Android (UniFFI) | ⏳ další krok |
-| UI (Jetpack Compose) | — |
-| Přehrávač (Media3 + FFmpeg) | — |
+| Lokální databáze (malá, plní se podle zájmu), napojení na Android (UniFFI) | ✅ hotovo, testy |
+| UI (Jetpack Compose) | ⏳ další krok |
+| Přehrávač (mpv) | — |
+| Doporučení podle vkusu (na zařízení) | — |
 | Stahování offline | — |
 | Přehraj.to, anime (AniList, české titulky) | — |
 
@@ -28,31 +29,42 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 - Oddělené sekce **Filmy**, **Seriály** (série → epizody) a **Anime**, hledání s diakritikou i bez.
 - Detail titulu: popis, hodnocení, výběr zdroje podle kvality, kodeku, jazyka zvuku a titulků.
   Zdroje s českým dabingem a titulky mají přednost před rozlišením.
-- Přehrávač: MKV, HLS, DASH, hardwarové dekódování, FFmpeg pro AC3/EAC3/DTS/TrueHD, přepínání zvukových
-  stop, interní i externí titulky (SRT, ASS/SSA), gesta (jas, hlasitost, posun), navázání tam, kde jsi skončil.
+- Přehrávač postavený na **mpv**: MKV, MP4, AVI (Xvid/DivX), HLS, hardwarové dekódování, zvuk AC3/EAC3/DTS/TrueHD,
+  přepínání zvukových stop, interní i externí titulky včetně plně stylovaných ASS pro anime, gesta (jas,
+  hlasitost, posun), navázání tam, kde jsi skončil.
+- Malá databáze, která se plní jen tím, co tě zajímá, a sama se uklízí. V nastavení „Pročistit paměť“.
+- Doporučení podle vkusu počítaná v telefonu (žánry, období, dabing vs. titulky), bez sdílení dat.
 - Stahování filmů a celých sérií pro offline sledování.
 
 ## Architektura
 
 ```
-core/                 Rust – logika bez závislosti na Androidu (testuje se `cargo test`)
+core/                   Rust – logika bez závislosti na Androidu (testuje se `cargo test`)
   kuro-core/
-    src/text.rs         normalizace názvů, podobnost
-    src/matcher/        parser názvů souborů, detekce jazyků, párování a řazení zdrojů
-    src/providers/      úložiště (Webshare, …)
-android/              Kotlin – Jetpack Compose UI, Media3 přehrávač, stahování (připravuje se)
+    src/matcher/          parser názvů souborů, detekce jazyků, párování a řazení zdrojů
+    src/providers/        úložiště (Webshare, …)
+    src/meta/             Cinemeta, Wikidata
+    src/finder.rs         vyhledání zdrojů k titulu/epizodě
+    src/storage/          SQLite: katalog ve vrstvách, zájem, vkus, cache zdrojů, knihovna, úklid
+    examples/kuro.rs      CLI pro ruční ověření
+  kuro-ffi/               UniFFI fasáda (`KuroCore`) → libkuro_ffi.so + Kotlin bindingy
+android/                Kotlin – Jetpack Compose UI, přehrávač, stahování
 ```
 
-Rust core se do aplikace dostane přes **UniFFI** a `cargo-ndk` (`arm64-v8a`, `armeabi-v7a`, `x86_64`).
+Gradle při buildu sám přeloží Rust přes `cargo-ndk` (`arm64-v8a`, `armeabi-v7a`, `x86_64`) a vygeneruje
+Kotlin bindingy (`app.kuro.core`).
 
 ## Sestavení
 
+Potřeba: Rust (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`),
+`cargo install cargo-ndk`, Android SDK s NDK 29.0.14206865, Android Studio.
+
 ```bash
-cd core
-cargo test
+cd core && cargo test                 # logika, offline
+cd android && ./gradlew assembleDebug # APK (Rust se přeloží automaticky)
 ```
 
-Android část zatím neexistuje.
+Nebo otevři složku `android/` v Android Studiu a dej **Run**.
 
 ## Poznámky
 - Kuro není spojené s Webshare, Stremiem, Wikidaty, AniListem ani jinou službou.
