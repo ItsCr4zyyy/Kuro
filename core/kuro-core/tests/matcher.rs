@@ -422,3 +422,30 @@ fn short_titles_need_close_match() {
     let ok = score_match(&parse_release("The Boys S01E01 CZ dabing.mkv"), &boys);
     assert!(ok.rejected.is_none(), "{ok:?}");
 }
+
+#[test]
+fn episode_of_total_is_not_a_range() {
+    // Živě: "Banda S01E01-08 … Karty jsou rozdaný" = díl 1 z 8, 1,1 GB.
+    let p = parse_release("Banda S01E01-08 2019 CZ dabing 1080p FHD - Karty jsou rozdaný.mkv");
+    assert_eq!((p.season, p.episode, p.episode_to), (Some(1), Some(1), None));
+    assert_eq!(p.reject, None);
+    assert_eq!(p.title, "Banda");
+
+    // Skutečné rozsahy dál pryč.
+    assert!(parse_release("Friends.S05E03-E04.720p.WEB-DL.mkv").reject.is_some());
+    assert!(parse_release("Show.S01E01E02.720p.mkv").reject.is_some());
+    assert!(parse_release("Show.S01E01-02.720p.mkv").reject.is_some());
+
+    let boys = MatchTarget {
+        title_cs: "Banda".into(),
+        title_orig: "The Boys".into(),
+        aliases: vec!["Banda".into()],
+        year: Some(2019),
+        runtime: Some(60),
+        kind: MediaKind::Series,
+        season: Some(1),
+        episode: Some(1),
+    };
+    let res = score_match(&p, &boys);
+    assert!(res.rejected.is_none() && res.confidence >= MIN_CONFIDENCE, "{res:?}");
+}

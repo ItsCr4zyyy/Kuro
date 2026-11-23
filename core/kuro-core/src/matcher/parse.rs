@@ -150,7 +150,8 @@ static YEAR: LazyLock<Regex> = LazyLock::new(|| rx(r"\b(19[0-9]{2}|20[0-4][0-9])
 
 static EPISODE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
-        rx(r"\bs(\d{1,2})[\s._-]*e(\d{1,3})(?:[\s._-]*e?(\d{1,3}))?\b"), // S01E02, S01E02E03
+        // S01E02, S01E02E03, S01E02-E03; skupina 3 = "e" před druhým číslem.
+        rx(r"\bs(\d{1,2})[\s._-]*e(\d{1,3})(?:[\s._-]*(e)?(\d{1,3}))?\b"),
         rx(r"\b(\d{1,2})x(\d{1,3})\b"),                                 // 1x02
         rx(r"\bseason[\s._-]*(\d{1,2})[\s._-]*episode[\s._-]*(\d{1,3})\b"),
         rx(r"\bserie[\s._-]*(\d{1,2})[\s._-]*(?:dil|epizoda)[\s._-]*(\d{1,3})\b"),
@@ -229,7 +230,15 @@ pub fn parse_release(raw_name: &str) -> ParsedRelease {
         if let Some(c) = re.captures(&spaced) {
             season = num(c.get(1));
             episode = num(c.get(2));
-            episode_to = num(c.get(3));
+            // Druhé číslo jen u prvního vzoru (S01E02…). Rozsah dílů je to,
+            // když před ním stojí "E" (S05E03-E04) nebo navazuje (E01-02).
+            // "S01E01-08" bez E je česká konvence "díl 1 z 8", ne 8 dílů.
+            let to = num(c.get(4));
+            let has_e = c.get(3).is_some();
+            episode_to = match (episode, to) {
+                (Some(e), Some(t)) if has_e || t == e + 1 => Some(t),
+                _ => None,
+            };
             episode_idx = Some(c.get(0).unwrap().start());
             break;
         }
