@@ -144,6 +144,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.mpv)
 
     // JNA jako AAR — obsahuje nativní libjnidispatch.so pro Android.
     implementation("${libs.jna.get().module}:${libs.jna.get().version}@aar")

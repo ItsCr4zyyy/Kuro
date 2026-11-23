@@ -22,5 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Přehrávač: na šířku, obraz v obraze, při otočení/PiP se nerestartuje
+             (mpv by jinak spadl o surface a začal načítat znovu). -->
+        <activity
+            android:name=".player.PlayerActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density" />
     </application>
 </manifest>

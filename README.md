@@ -19,10 +19,10 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 | Rust core: parser názvů, jazyky, párování, Webshare login hash | ✅ hotovo, testy |
 | Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ✅ ověřeno živě (login, VIP, odkazy) |
 | Lokální databáze (malá, plní se podle zájmu), napojení na Android (UniFFI) | ✅ hotovo, testy |
-| UI: Domů, hledání, detail se sezónami a zdroji, knihovna, přihlášení, nastavení | ✅ hotovo (přehrávání zatím v externím přehrávači) |
-| Přehrávač (mpv) | ⏳ další krok |
+| UI: Domů, hledání, detail se sezónami a zdroji, knihovna, přihlášení, nastavení | ✅ hotovo |
+| Přehrávač mpv: gesta, stopy, ASS titulky, navázání, obraz v obraze | ✅ hotovo, ověřeno na emulátoru |
+| Stahování offline | ⏳ další krok |
 | Doporučení podle vkusu (na zařízení) | — |
-| Stahování offline | — |
 | Přehraj.to, anime (AniList, české titulky) | — |
 
 ## Plánované funkce
@@ -67,6 +67,7 @@ cd android && ./gradlew assembleDebug # APK (Rust se přeloží automaticky)
 Nebo otevři složku `android/` v Android Studiu a dej **Run**.
 
 ## Poznámky
+- Přehrávač je [mpv](https://mpv.io) přes knihovnu [mpv-android-lib](https://github.com/abdallahmehiz/mpv-android) (MIT) s FFmpeg a libass.
 - Kuro není spojené s Webshare, Stremiem, Wikidaty, AniListem ani jinou službou.
 - Logika párování souborů vychází z projektu NSC.
 - K přehrávání je potřeba vlastní účet u úložiště. Kuro nic nehostuje ani neproxuje.

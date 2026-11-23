@@ -1,8 +1,5 @@
 package app.kuro.ui.detail
 
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,13 +59,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.kuro.core.Episode
 import app.kuro.core.StreamInfo
 import app.kuro.core.TitleDetail
 import app.kuro.kuroApp
+import app.kuro.player.PlayerActivity
 import app.kuro.ui.common.BadgeRow
 import app.kuro.ui.common.Loading
 import app.kuro.ui.common.Message
@@ -93,17 +90,23 @@ fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
         onPauseOrDispose {}
     }
 
-    // Přehrávání: do F5 (mpv) se odkaz otevře v nainstalovaném přehrávači.
     LaunchedEffect(vm.event) {
         when (val e = vm.event) {
             PlayEvent.NeedLogin -> onLogin()
             is PlayEvent.Ready -> {
-                val intent = Intent(Intent.ACTION_VIEW).setDataAndType(e.link.url.toUri(), "video/*")
-                try {
-                    context.startActivity(Intent.createChooser(intent, "Přehrát v…"))
-                } catch (_: ActivityNotFoundException) {
-                    Toast.makeText(context, "Není nainstalovaný žádný přehrávač videa.", Toast.LENGTH_LONG).show()
-                }
+                val card = vm.detail?.card
+                PlayerActivity.start(
+                    context,
+                    titleId = titleId,
+                    season = e.target.season,
+                    episode = e.target.episode,
+                    provider = e.stream.provider,
+                    ident = e.stream.ident,
+                    url = e.link.url,
+                    title = card?.title.orEmpty(),
+                    subtitle = e.target.label.takeIf { e.target.season > 0 },
+                )
+                vm.closeStreams()
             }
             null -> {}
         }

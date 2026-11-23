@@ -13,6 +13,8 @@ coil = "3.5.0"
 coroutines = "1.11.0"
 # UniFFI Kotlin bindingy volají Rust přes JNA.
 jna = "5.17.0"
+# libmpv + FFmpeg pro Android (MIT, github.com/abdallahmehiz/mpv-android).
+mpv = "0.2.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -32,6 +34,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 coil-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+mpv = { module = "io.github.abdallahmehiz:mpv-android-lib", version.ref = "mpv" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

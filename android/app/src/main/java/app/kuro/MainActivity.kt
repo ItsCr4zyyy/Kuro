@@ -14,6 +14,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { KuroTheme { KuroRoot() } }
+        debugPlay()
+    }
+
+    /**
+     * Jen debug build: přehrávač s libovolnou URL bez přihlášení, pro test
+     * přes adb:  adb shell am start -n app.kuro.debug/app.kuro.MainActivity
+     *            --es kuro_debug_play_url <url>
+     */
+    private fun debugPlay() {
+        if (!BuildConfig.DEBUG) return
+        val url = intent.getStringExtra("kuro_debug_play_url") ?: return
+        app.kuro.player.PlayerActivity.start(
+            this, titleId = -1, season = 0, episode = 0,
+            provider = app.kuro.core.Provider.WEBSHARE, ident = "debug", url = url,
+            title = "Debug", subtitle = url.substringAfterLast('/'),
+        )
     }
 }
 
