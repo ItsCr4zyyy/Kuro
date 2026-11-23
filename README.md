@@ -17,8 +17,8 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 | Část | Stav |
 |---|---|
 | Rust core: parser názvů, jazyky, párování, Webshare login hash | ✅ hotovo, testy |
-| Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ⏳ další krok |
-| Lokální databáze, napojení na Android (UniFFI) | — |
+| Webshare, Cinemeta, Wikidata, vyhledávání zdrojů | ✅ hledání ověřeno živě, login čeká na test |
+| Lokální databáze, napojení na Android (UniFFI) | ⏳ další krok |
 | UI (Jetpack Compose) | — |
 | Přehrávač (Media3 + FFmpeg) | — |
 | Stahování offline | — |

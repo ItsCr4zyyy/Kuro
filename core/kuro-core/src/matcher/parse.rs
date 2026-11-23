@@ -184,15 +184,6 @@ fn season_only(spaced: &str) -> Option<(u16, usize)> {
         .find_map(|re| re.captures(spaced).and_then(|c| Some((num(c.get(1))?, c.get(0)?.start()))))
 }
 
-fn current_year() -> u16 {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    // Průměrná délka gregoriánského roku; na rozhodování o roce v názvu stačí.
-    (1970 + secs / 31_556_952) as u16
-}
-
 /// Rozparsuje název souboru z release scény na strukturovaná data.
 pub fn parse_release(raw_name: &str) -> ParsedRelease {
     let name = raw_name.rsplit(['/', '\\']).next().unwrap_or(raw_name);
@@ -242,7 +233,7 @@ pub fn parse_release(raw_name: &str) -> ParsedRelease {
 
     // --- rok -------------------------------------------------------
     // První výskyt — pozdější bývá součást release tagu.
-    let max_year = current_year() + 2;
+    let max_year = crate::time::current_year() + 2;
     let mut year = None;
     let mut year_idx = None;
     for m in YEAR.find_iter(&spaced) {

@@ -16,6 +16,7 @@ android/app/src/main/jniLibs/
 # Secrets / local
 .env
 .env.*
+!.env.example
 *.log
 
 # OS / editor
