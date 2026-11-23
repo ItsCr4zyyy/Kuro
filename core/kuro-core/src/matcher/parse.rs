@@ -27,6 +27,15 @@ impl Hdr {
             Hdr::Hdr10 => "HDR10",
         }
     }
+
+    pub fn from_label(s: &str) -> Option<Self> {
+        match s {
+            "DV" => Some(Hdr::DolbyVision),
+            "HDR10+" => Some(Hdr::Hdr10Plus),
+            "HDR10" => Some(Hdr::Hdr10),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

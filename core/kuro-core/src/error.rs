@@ -31,6 +31,9 @@ pub enum Error {
 
     #[error("neočekávaná odpověď: {0}")]
     BadResponse(String),
+
+    #[error("databáze: {0}")]
+    Db(String),
 }
 
 impl Error {

@@ -24,6 +24,13 @@ impl ProviderId {
             ProviderId::Webshare => "webshare",
         }
     }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "webshare" => Some(ProviderId::Webshare),
+            _ => None,
+        }
+    }
 }
 
 /// Soubor tak, jak ho vrátí hledání u providera.

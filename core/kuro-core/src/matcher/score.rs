@@ -226,6 +226,14 @@ pub fn stream_sort_key(s: &SortInput<'_>) -> f64 {
     score += f64::from(s.ok_count.min(20)) * 200.0;
     score -= f64::from(s.fail_count.min(20)) * 400.0;
 
+    // Na zařízení statistiky sbírá jediný uživatel: dvě selhání bez
+    // jediného úspěchu = mrtvý odkaz. Musí spadnout pod všechno funkční,
+    // i pod zdroje bez dabingu — jinak by navrchu visel zdroj, který
+    // nejde pustit, a aplikace by vypadala rozbitě.
+    if s.fail_count >= 2 && s.ok_count == 0 {
+        score -= 20_000.0;
+    }
+
     // Při shodě všeho ostatního větší soubor = lepší kvalita, ale slabá váha.
     score += (s.size_bytes as f64 / 1_000_000_000.0).min(60.0) * 5.0;
 

@@ -8,6 +8,7 @@ pub mod http;
 pub mod matcher;
 pub mod meta;
 pub mod providers;
+pub mod storage;
 pub mod text;
 pub mod time;
 
