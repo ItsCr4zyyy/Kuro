@@ -38,6 +38,17 @@ pub enum Catalog {
     New,
 }
 
+/// Výsledek obnovy ze zálohy.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct RestoreResult {
+    /// Nově přidané tituly.
+    pub titles: u32,
+    pub watchlist: u32,
+    pub progress: u32,
+    /// Nastavení ze zálohy (aplikuje Android vrstva).
+    pub settings: std::collections::HashMap<String, String>,
+}
+
 /// Řady záložky Anime (AniList).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum AnimeCatalog {

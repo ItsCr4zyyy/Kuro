@@ -114,6 +114,7 @@ class PlayerActivity : ComponentActivity() {
         var startedRecorded = false
         state.onLoaded = {
             view.mpv.setPropertyBoolean("pause", false)
+            creditsStartSec = findCreditsChapter()
             // Titulky od zdroje (Přehraj.to/Hellspy) nebo stažené vedle videa.
             // Jen nabídnout ("auto"), zapne je výběr jazyka (slang) nebo uživatel.
             if (!subtitlesAdded) {
@@ -170,9 +171,27 @@ class PlayerActivity : ComponentActivity() {
         return (p.positionMs / 1000 - 3).coerceAtLeast(0)
     }
 
+    /**
+     * Začátek titulků podle kapitol souboru ("Credits", "End Credits",
+     * "Titulky", "Ending"…), jen v poslední čtvrtině. Kdo dojde sem, má
+     * dokoukáno — stejně jako Jellyfin s kapitolami.
+     */
+    private fun findCreditsChapter(): Double? = runCatching {
+        val duration = view.mpv.getPropertyDouble("duration") ?: return null
+        val count = view.mpv.getPropertyInt("chapter-list/count") ?: 0
+        (0 until count).firstNotNullOfOrNull { i ->
+            val title = view.mpv.getPropertyString("chapter-list/$i/title").orEmpty()
+            val time = view.mpv.getPropertyDouble("chapter-list/$i/time") ?: return@firstNotNullOfOrNull null
+            time.takeIf { it >= duration * 0.75 && CREDITS.containsMatchIn(title) }
+        }
+    }.getOrNull()
+
+    private var creditsStartSec: Double? = null
+
     private fun saveProgress() {
         if (!state.loaded || state.duration <= 0) return
-        val pos = if (state.ended) state.duration else state.position
+        val inCredits = creditsStartSec?.let { state.position >= it } == true
+        val pos = if (state.ended || inCredits) state.duration else state.position
         runCatching {
             core.saveProgress(titleId, season, episode, (pos * 1000).toLong(), (state.duration * 1000).toLong(), provider, ident)
         }
@@ -347,6 +366,10 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_SUBTITLE = "subtitle"
         private const val EXTRA_SUBS = "subs"
+        private val CREDITS = Regex(
+            """^(end\s*)?credits|^(closing|ending)\b|^titulky|^závěrečné titulky|^outro\b|^ed\b""",
+            RegexOption.IGNORE_CASE,
+        )
 
         fun start(
             context: Context,

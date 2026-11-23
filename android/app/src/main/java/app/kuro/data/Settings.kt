@@ -39,6 +39,22 @@ class Settings(context: Context) {
             .mapNotNull { n -> Provider.entries.find { it.name == n } }.toSet()
         set(v) = prefs.edit { putStringSet(KEY_DISABLED_PROVIDERS, v.map { it.name }.toSet()) }
 
+    /** Nastavení do zálohy (bez účtu, bez měření rychlosti — to patří k zařízení). */
+    fun toBackup(): Map<String, String> = mapOf(
+        KEY_MAX_TITLES to maxTitles.toString(),
+        KEY_WIFI_ONLY to downloadWifiOnly.toString(),
+        KEY_DISABLED_PROVIDERS to disabledProviders.joinToString(",") { it.name },
+    )
+
+    /** Obnova ze zálohy; neznámé nebo vadné hodnoty se přeskočí. */
+    fun applyBackup(map: Map<String, String>) {
+        map[KEY_MAX_TITLES]?.toIntOrNull()?.takeIf { it in MAX_TITLES_OPTIONS }?.let { maxTitles = it }
+        map[KEY_WIFI_ONLY]?.toBooleanStrictOrNull()?.let { downloadWifiOnly = it }
+        map[KEY_DISABLED_PROVIDERS]?.let { raw ->
+            disabledProviders = raw.split(',').mapNotNull { n -> Provider.entries.find { it.name == n.trim() } }.toSet()
+        }
+    }
+
     companion object {
         const val DEFAULT_MAX_TITLES = 3000
         val MAX_TITLES_OPTIONS = listOf(1000, 3000, 10000)

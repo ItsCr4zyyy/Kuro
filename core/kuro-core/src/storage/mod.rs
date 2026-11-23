@@ -12,6 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::{Error, Result};
 
+mod backup;
 mod catalog;
 mod downloads;
 mod library;
@@ -19,6 +20,7 @@ mod prune;
 mod recs;
 mod streams;
 
+pub use backup::RestoreReport;
 pub use catalog::{Event, StoredTitle};
 pub use downloads::{Download, DownloadState, DownloadWithTitle};
 pub use library::{ContinueItem, Progress};

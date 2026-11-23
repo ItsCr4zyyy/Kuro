@@ -23,6 +23,7 @@ v zařízení zůstává jen přihlašovací token zašifrovaný přes Android K
 | Přehrávač mpv: gesta, stopy, ASS titulky, navázání, obraz v obraze | ✅ hotovo, ověřeno na emulátoru |
 | Stahování offline: na pozadí, navázání po výpadku, celé sezóny, přehrávání bez internetu | ✅ hotovo, ověřeno na emulátoru |
 | Doporučení podle vkusu (na zařízení), další díl v Pokračovat, kontrola nových dílů | ✅ hotovo |
+| Záloha a obnova knihovny (JSON), konec filmu podle titulků | ✅ hotovo |
 | Zdroje bez účtu: Přehraj.to, Hellspy (převody do 1080p, titulky, slučování duplicit) | ✅ hotovo, ověřeno na emulátoru |
 | Anime z AniListu: katalog (trendy, sezóna, hodnocení, filmy), romaji názvy pro párování, převod na IMDb přes Wikidata | ✅ hotovo |
 | České titulky k anime (Hiyori) | — |

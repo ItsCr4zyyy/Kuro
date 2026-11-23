@@ -11,6 +11,22 @@ use crate::providers::ProviderId;
 /// Od kolika procent se titul/epizoda bere jako dokoukaná.
 pub const FINISHED_RATIO: f64 = 0.9;
 
+/// Film se zbytkem do 8 minut je dokoukaný: titulky velkých filmů mají
+/// 8–15 minut a na ně se nikdo nedívá (90 % u tříhodinového filmu je 18 min).
+const MOVIE_CREDITS_MS: i64 = 8 * 60_000;
+
+/// Dokoukáno: 90 % (jako Jellyfin), u filmu i posledních 8 minut.
+/// Přehrávač navíc posílá celou délku, když dojde na kapitolu titulků.
+pub fn is_finished(target: Target, position_ms: i64, duration_ms: i64) -> bool {
+    if duration_ms <= 0 {
+        return false;
+    }
+    let by_ratio = position_ms as f64 >= duration_ms as f64 * FINISHED_RATIO;
+    let movie_credits =
+        !target.is_episode() && duration_ms >= 60 * 60_000 && duration_ms - position_ms <= MOVIE_CREDITS_MS;
+    by_ratio || movie_credits
+}
+
 /// Kolik nedávných hledání se pamatuje.
 const RECENT_SEARCHES: i64 = 50;
 
@@ -97,7 +113,7 @@ impl Db {
         source: Option<(ProviderId, &str)>,
     ) -> Result<()> {
         let now = self.now();
-        let finished = duration_ms > 0 && position_ms as f64 >= duration_ms as f64 * FINISHED_RATIO;
+        let finished = is_finished(target, position_ms, duration_ms);
         let was_finished = self.with(|c| {
             let was: Option<bool> = c
                 .query_row(
@@ -259,4 +275,25 @@ impl Db {
 
 fn prefixed(cols: &str, alias: &str) -> String {
     cols.split(", ").map(|c| format!("{alias}.{c}")).collect::<Vec<_>>().join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finished_rules() {
+        let movie = Target::movie(1);
+        let ep = Target::episode(1, 1, 1);
+        let min = 60_000;
+        // Endgame: 181 min, zastaveno na začátku titulků (zbývá ~16 min).
+        assert!(is_finished(movie, 165 * min, 181 * min), "90 %");
+        // 120min film, zbývá 7 min → titulky.
+        assert!(is_finished(movie, 113 * min, 120 * min));
+        assert!(!is_finished(movie, 100 * min, 120 * min));
+        // Epizoda: jen 90 %, 8 minut by u 22min dílu bylo moc.
+        assert!(!is_finished(ep, 15 * min, 22 * min));
+        assert!(is_finished(ep, 20 * min, 22 * min));
+        assert!(!is_finished(movie, 0, 0));
+    }
 }

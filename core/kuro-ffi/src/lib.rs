@@ -341,6 +341,18 @@ impl KuroCore {
         Ok(cached.streams.iter().filter(|s| self.finder.is_active(s.provider)).map(StreamInfo::from).collect())
     }
 
+    /// Záloha knihovny jako JSON (oblíbené, pozice, vkus, hledání + `settings`).
+    /// Bez přihlašovacích údajů a bez odkazů na soubory.
+    pub fn export_backup(&self, settings: std::collections::HashMap<String, String>) -> Result<String> {
+        Ok(self.db.export_backup(settings)?)
+    }
+
+    /// Doplní knihovnu ze zálohy (nic nemaže, novější pozice vyhrává).
+    pub fn import_backup(&self, json: String) -> Result<RestoreResult> {
+        let (r, settings) = self.db.import_backup(&json)?;
+        Ok(RestoreResult { titles: r.titles, watchlist: r.watchlist, progress: r.progress, settings })
+    }
+
     /// Zdroje vypnuté v nastavení (výchozí: žádné). Při zapnutí zdroje se
     /// uložené výsledky označí za staré, ať se dohledají.
     pub fn set_disabled_providers(&self, providers: Vec<Provider>) -> Result<()> {

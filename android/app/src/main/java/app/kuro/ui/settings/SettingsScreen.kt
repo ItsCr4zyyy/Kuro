@@ -1,5 +1,7 @@
 package app.kuro.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -199,6 +201,52 @@ fun SettingsScreen(onLogin: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        Group("Záloha") {
+            var backupMsg by remember { mutableStateOf<String?>(null) }
+            val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+                uri ?: return@rememberLauncherForActivityResult
+                scope.launch {
+                    backupMsg = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val json = app.core.exportBackup(app.settings.toBackup())
+                            context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(json.toByteArray()) }
+                            "Záloha uložena."
+                        }.getOrElse { "Záloha se nepovedla: ${it.message}" }
+                    }
+                }
+            }
+            val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                uri ?: return@rememberLauncherForActivityResult
+                scope.launch {
+                    backupMsg = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val json = context.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
+                            val r = app.core.importBackup(json)
+                            app.settings.applyBackup(r.settings)
+                            app.core.setDisabledProviders(app.settings.disabledProviders.toList())
+                            "Obnoveno: ${r.titles} titulů, ${r.watchlist} oblíbených, ${r.progress} pozic."
+                        }.getOrElse { e ->
+                            "Obnova se nepovedla: " + ((e as? KuroException.Other)?.msg ?: "soubor nejde přečíst.")
+                        }
+                    }
+                    maxTitles = app.settings.maxTitles
+                }
+            }
+            Text(
+                "Oblíbené, rozkoukané a zhlédnuté, vkus pro doporučení a nastavení v jednom souboru. " +
+                    "Hodí se při přechodu na nový telefon. Účet ani stažené soubory v záloze nejsou.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { exportLauncher.launch("kuro-zaloha-${java.time.LocalDate.now()}.json") }) { Text("Zálohovat") }
+                OutlinedButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }) {
+                    Text("Obnovit")
+                }
+            }
+            backupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
 
         Group("Soukromí") {

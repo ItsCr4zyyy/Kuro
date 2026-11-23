@@ -69,7 +69,16 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 
-enum class Section(val label: String) { MOVIES("Filmy"), SERIES("Seriály"), ANIME("Anime") }
+/** Vše = domov (pokračování a doporučení ze všeho); ostatní = jen daný druh. */
+enum class Section(val label: String) { ALL("Vše"), MOVIES("Filmy"), SERIES("Seriály"), ANIME("Anime") }
+
+/** Patří titul do sekce? */
+private fun Section.accepts(kind: MediaKind, anime: Boolean): Boolean = when (this) {
+    Section.ALL -> true
+    Section.MOVIES -> kind == MediaKind.MOVIE && !anime
+    Section.SERIES -> kind == MediaKind.SERIES && !anime
+    Section.ANIME -> anime
+}
 
 private data class RowSpec(
     val title: String,
@@ -82,6 +91,12 @@ private data class RowSpec(
 
 /** Anime = AniList (jen tituly s protějškem na IMDb, kvůli epizodám a zdrojům). */
 private fun rowsFor(section: Section): List<RowSpec> = when (section) {
+    Section.ALL -> listOf(
+        RowSpec("Populární filmy", MediaKind.MOVIE, Catalog.POPULAR),
+        RowSpec("Populární seriály", MediaKind.SERIES, Catalog.POPULAR),
+        RowSpec("Anime teď", MediaKind.SERIES, Catalog.POPULAR, anime = AnimeCatalog.TRENDING),
+        RowSpec("Nové filmy", MediaKind.MOVIE, Catalog.NEW),
+    )
     Section.MOVIES -> listOf(
         RowSpec("Populární filmy", MediaKind.MOVIE, Catalog.POPULAR),
         RowSpec("Novinky", MediaKind.MOVIE, Catalog.NEW),
@@ -102,7 +117,7 @@ private fun rowsFor(section: Section): List<RowSpec> = when (section) {
 }
 
 class HomeViewModel(private val core: KuroCore) : ViewModel() {
-    var section by mutableStateOf(Section.MOVIES)
+    var section by mutableStateOf(Section.ALL)
         private set
     var rows by mutableStateOf<List<Pair<String, List<TitleCard>>>>(emptyList())
         private set
@@ -120,13 +135,11 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
 
     /** Doporučení pro aktuální sekci. */
     val forYou: List<TitleCard>
-        get() = recs.filter {
-            when (section) {
-                Section.MOVIES -> it.kind == MediaKind.MOVIE && !it.anime
-                Section.SERIES -> it.kind == MediaKind.SERIES && !it.anime
-                Section.ANIME -> it.anime
-            }
-        }
+        get() = recs.filter { section.accepts(it.kind, it.anime) }
+
+    /** Rozkoukané pro aktuální sekci (ve "Vše" všechno). */
+    val continueShown: List<ContinueItem>
+        get() = continueItems.filter { section.accepts(it.title.kind, it.title.anime) }
 
     private var computingRecs = false
 
@@ -174,8 +187,10 @@ class HomeViewModel(private val core: KuroCore) : ViewModel() {
     }
 
     fun select(s: Section) {
-        if (s == section) return
-        section = s
+        // Druhé klepnutí na vybranou sekci vrátí na "Vše".
+        val next = if (s == section) Section.ALL else s
+        if (next == section) return
+        section = next
         rows = emptyList()
         load()
     }
@@ -241,14 +256,14 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
                     onToggleWatchlist = vm::toggleFeaturedWatchlist,
                 )
             }
-            if (vm.continueItems.isNotEmpty()) {
+            if (vm.continueShown.isNotEmpty()) {
                 item {
                     SectionTitle("Pokračovat ve sledování")
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(vm.continueItems, key = { it.title.id }) { c ->
+                        items(vm.continueShown, key = { it.title.id }) { c ->
                             val p = c.progress
                             PosterCard(
                                 c.title,
