@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Jen stažená aktualizace (cache/update) se předává systémové instalaci. -->
+<paths>
+    <cache-path name="update" path="update/" />
+</paths>

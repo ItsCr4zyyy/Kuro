@@ -85,6 +85,12 @@ pub fn score_match(parsed: &ParsedRelease, target: &MatchTarget) -> MatchResult 
                 sequel_conflict = true;
                 continue;
             }
+            // Film bez čísla = první díl: "Hunger Games-02" je pokračování,
+            // ne "The Hunger Games". (U seriálů ne — čísla tam bývají sezóny.)
+            if target.kind == MediaKind::Movie && cn.is_empty() && pn.iter().any(|n| *n >= 2) {
+                sequel_conflict = true;
+                continue;
+            }
             let mut s = similarity(p, c);
             // Soubor občas nese zkrácený název. Prefixovou shodu netrestáme
             // jako překlep. Opačný směr NE: "Interstellar Documentary"

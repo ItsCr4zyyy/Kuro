@@ -42,6 +42,7 @@ APK je v [GitHub Releases](https://github.com/ItsCr4zyyy/Kuro/releases/latest) (
 - Stahování filmů i celých sezón na pozadí, navázání po výpadku, přehrávání bez internetu,
   titulky se stáhnou s videem. Volitelně jen přes Wi-Fi.
 - Doporučení podle vkusu počítaná v telefonu (žánry, období, dabing vs. titulky).
+- Ruční aktualizace z GitHub Releases v nastavení (nic se nekontroluje samo).
 - Záloha a obnova do JSON souboru (oblíbené, pozice, vkus, nastavení) — pro přechod na nový telefon.
 - Malá databáze, která se plní jen tím, co tě zajímá, a sama se uklízí; v nastavení „Pročistit paměť“.
 

@@ -54,6 +54,44 @@ class PlayerActivity : ComponentActivity() {
     var inPip by mutableStateOf(false)
         private set
 
+    private var title by mutableStateOf("")
+    private var subtitle by mutableStateOf<String?>(null)
+    private var startedRecorded = false
+
+    /** Co přehrát — z intentu při spuštění i při novém videu v běžícím přehrávači. */
+    private fun readIntent(i: Intent) {
+        titleId = i.getLongExtra(EXTRA_TITLE_ID, 0)
+        season = i.getIntExtra(EXTRA_SEASON, 0)
+        episode = i.getIntExtra(EXTRA_EPISODE, 0)
+        provider = Provider.valueOf(i.getStringExtra(EXTRA_PROVIDER) ?: Provider.WEBSHARE.name)
+        ident = i.getStringExtra(EXTRA_IDENT).orEmpty()
+        url = i.getStringExtra(EXTRA_URL).orEmpty()
+        title = i.getStringExtra(EXTRA_TITLE).orEmpty()
+        subtitle = i.getStringExtra(EXTRA_SUBTITLE)
+        externalSubtitles = i.getStringArrayListExtra(EXTRA_SUBS).orEmpty().mapNotNull { line ->
+            line.split('|', limit = 3).takeIf { it.size == 3 }?.let { (lang, label, u) -> Triple(lang, label, u) }
+        } + localSubtitles(url)
+        subtitlesAdded = false
+        startedRecorded = false
+        creditsStartSec = null
+    }
+
+    /**
+     * Přehrávač je singleTask: když běží (třeba zmenšený v obraze v obraze)
+     * a uživatel pustí jiné video, přijde sem. Uložit pozici starého a
+     * načíst nové — jinak by dál hrál původní soubor.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getStringExtra(EXTRA_URL).isNullOrEmpty()) return
+        saveProgress()
+        setIntent(intent)
+        readIntent(intent)
+        state.reset()
+        view.mpv.setPropertyString("start", resumePositionSec()?.toString() ?: "none")
+        view.mpv.command("loadfile", url)
+    }
+
     private var externalSubtitles: List<Triple<String, String, String>> = emptyList()
     private var subtitlesAdded = false
 
@@ -78,14 +116,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        titleId = intent.getLongExtra(EXTRA_TITLE_ID, 0)
-        season = intent.getIntExtra(EXTRA_SEASON, 0)
-        episode = intent.getIntExtra(EXTRA_EPISODE, 0)
-        provider = Provider.valueOf(intent.getStringExtra(EXTRA_PROVIDER) ?: Provider.WEBSHARE.name)
-        ident = intent.getStringExtra(EXTRA_IDENT).orEmpty()
-        url = intent.getStringExtra(EXTRA_URL).orEmpty()
-        val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
-        val subtitle = intent.getStringExtra(EXTRA_SUBTITLE)
+        readIntent(intent)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Video i do oblasti výřezu kamery — jinak je na šířku na jedné
@@ -111,7 +142,6 @@ class PlayerActivity : ComponentActivity() {
         view.mpv.addObserver(state)
 
         // Knihovna startuje mpv s pause=true — po načtení souboru rozběhnout.
-        var startedRecorded = false
         state.onLoaded = {
             view.mpv.setPropertyBoolean("pause", false)
             creditsStartSec = findCreditsChapter()
@@ -137,9 +167,6 @@ class PlayerActivity : ComponentActivity() {
 
         resumePositionSec()?.let { view.mpv.setOptionString("start", it.toString()) }
         view.playFile(url)
-        externalSubtitles = intent.getStringArrayListExtra(EXTRA_SUBS).orEmpty().mapNotNull { line ->
-            line.split('|', limit = 3).takeIf { it.size == 3 }?.let { (lang, label, u) -> Triple(lang, label, u) }
-        } + localSubtitles(url)
 
         setContent {
             KuroTheme {

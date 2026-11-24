@@ -43,6 +43,8 @@ import app.kuro.data.ContentKind
 import app.kuro.data.Settings
 import app.kuro.data.TokenVault
 import app.kuro.kuroApp
+import app.kuro.update.Release
+import app.kuro.update.Updater
 import coil3.SingletonImageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -270,6 +272,56 @@ fun SettingsScreen(onLogin: () -> Unit) {
                 }
             }
             backupMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+
+        Group("Aktualizace") {
+            var release by remember { mutableStateOf<Release?>(null) }
+            var updateMsg by remember { mutableStateOf<String?>(null) }
+            var checking by remember { mutableStateOf(false) }
+            var progress by remember { mutableStateOf<Float?>(null) }
+            Text("Verze ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Kuro se samo nikam nehlásí. Novou verzi najde jen po klepnutí (GitHub Releases).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val r = release
+            if (r == null) {
+                Button(enabled = !checking, onClick = {
+                    scope.launch {
+                        checking = true
+                        updateMsg = null
+                        runCatching { Updater.check() }
+                            .onSuccess { found ->
+                                release = found
+                                if (found == null) updateMsg = "Máš nejnovější verzi."
+                            }
+                            .onFailure { updateMsg = it.message ?: "Kontrola se nepovedla." }
+                        checking = false
+                    }
+                }) { Text(if (checking) "Hledám…" else "Zkontrolovat aktualizace") }
+            } else {
+                Text("K dispozici je verze ${r.version}", fontWeight = FontWeight.SemiBold)
+                if (r.notes.isNotBlank()) {
+                    Text(r.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                val p = progress
+                if (p != null) {
+                    androidx.compose.material3.LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                } else {
+                    Button(onClick = {
+                        scope.launch {
+                            progress = 0f
+                            updateMsg = null
+                            runCatching { Updater.download(context, r) { progress = it } }
+                                .onSuccess { apk -> Updater.install(context, apk) }
+                                .onFailure { updateMsg = it.message ?: "Stažení se nepovedlo." }
+                            progress = null
+                        }
+                    }) { Text("Stáhnout a nainstalovat (${formatSize(r.sizeBytes)})") }
+                }
+            }
+            updateMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
 
         Group("Soukromí") {

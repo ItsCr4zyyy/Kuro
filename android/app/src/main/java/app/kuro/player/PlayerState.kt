@@ -72,6 +72,19 @@ class PlayerState : MPV.EventObserver {
     val audioTracks: List<Track> get() = tracks.filter { it.type == "audio" }
     val subtitleTracks: List<Track> get() = tracks.filter { it.type == "sub" }
 
+    /** Nový soubor ve stejném přehrávači (např. z obrazu v obraze). */
+    fun reset() {
+        position = 0.0
+        duration = 0.0
+        cachedUntil = 0.0
+        loaded = false
+        ended = false
+        failed = null
+        buffering = true
+        bufferPercent = 0
+        tracks = emptyList()
+    }
+
     fun clearFailure() {
         failed = null
         buffering = true

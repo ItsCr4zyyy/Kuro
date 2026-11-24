@@ -341,6 +341,22 @@ fn other_part_of_series_is_rejected() {
 }
 
 #[test]
+fn numbered_sequel_is_not_first_movie() {
+    // Živě: k "The Hunger Games" (2012) se nabízel "Hunger Games-02 … Catching Fire".
+    let mut hg = interstellar();
+    hg.title_cs = "Hunger Games".into();
+    hg.title_orig = "The Hunger Games".into();
+    hg.aliases = vec![];
+    hg.year = Some(2012);
+    let res = score_match(&parse_release("Hunger Games-02_CZ(The Hunger Games Catching Fire).mp4"), &hg);
+    assert_eq!(res.rejected.as_deref(), Some("jiný díl série"), "{res:?}");
+    for f in ["Hunger Games-01_CZ(The Hunger Games;2012;67%)_.mp4", "Hunger Games 1 CZ Dab FullHD MoU.mp4", "Hunger Games (2012) CZ Dabing.mp4"] {
+        let res = score_match(&parse_release(f), &hg);
+        assert!(res.rejected.is_none(), "{f}: {res:?}");
+    }
+}
+
+#[test]
 fn glued_4khdr() {
     let p = parse_release("Duna - Part Two CZ (4KHDR).mkv");
     assert_eq!(p.height, Some(2160));
