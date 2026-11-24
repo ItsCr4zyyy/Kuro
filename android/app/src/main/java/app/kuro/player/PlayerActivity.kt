@@ -24,7 +24,11 @@ import androidx.lifecycle.lifecycleScope
 import app.kuro.KuroApp
 import app.kuro.core.KuroException
 import app.kuro.core.LinkPurpose
+import android.widget.Toast
+import app.kuro.core.Episode
 import app.kuro.core.Provider
+import app.kuro.core.StreamInfo
+import app.kuro.ui.common.isSuspicious
 import app.kuro.ui.theme.KuroTheme
 import `is`.xyz.mpv.Utils
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +62,16 @@ class PlayerActivity : ComponentActivity() {
     private var subtitle by mutableStateOf<String?>(null)
     private var startedRecorded = false
 
+    /** Rychlost, časovač vypnutí, nabídka dalšího dílu. */
+    val extras = PlayerExtras()
+    private var media: PlayerMediaSession? = null
+
+    /** Další díl a zdroj pro něj (připravené dopředu, ať přechod netrvá). */
+    private var preparedNext: Pair<Episode, StreamInfo>? = null
+    private var preparing = false
+    private var nextDismissed = false
+    private var hasNext = false
+
     /** Co přehrát — z intentu při spuštění i při novém videu v běžícím přehrávači. */
     private fun readIntent(i: Intent) {
         titleId = i.getLongExtra(EXTRA_TITLE_ID, 0)
@@ -87,7 +101,18 @@ class PlayerActivity : ComponentActivity() {
         saveProgress()
         setIntent(intent)
         readIntent(intent)
+        loadCurrent()
+    }
+
+    /** Načte [url] do běžícího přehrávače (nové video nebo další díl). */
+    private fun loadCurrent() {
         state.reset()
+        extras.nextUp = null
+        preparedNext = null
+        preparing = false
+        nextDismissed = false
+        hasNext = false
+        if (extras.sleep == SleepTimer.END) extras.sleep = SleepTimer.OFF
         view.mpv.setPropertyString("start", resumePositionSec()?.toString() ?: "none")
         view.mpv.command("loadfile", url)
     }
@@ -145,6 +170,9 @@ class PlayerActivity : ComponentActivity() {
         state.onLoaded = {
             view.mpv.setPropertyBoolean("pause", false)
             creditsStartSec = findCreditsChapter()
+            hasNext = season > 0 && titleId > 0 &&
+                runCatching { core.nextEpisode(titleId, season, episode) }.getOrNull() != null
+            media?.setMetadata(title, subtitle, view.mpv.getPropertyDouble("duration") ?: 0.0, hasNext)
             // Titulky od zdroje (Přehraj.to/Hellspy) nebo stažené vedle videa.
             // Jen nabídnout ("auto"), zapne je výběr jazyka (slang) nebo uživatel.
             if (!subtitlesAdded) {
@@ -168,6 +196,17 @@ class PlayerActivity : ComponentActivity() {
         resumePositionSec()?.let { view.mpv.setOptionString("start", it.toString()) }
         view.playFile(url)
 
+        media = runCatching {
+            PlayerMediaSession(this, object : PlayerMediaSession.Callbacks {
+                override fun play() { view.mpv.setPropertyBoolean("pause", false) }
+                override fun pause() { view.mpv.setPropertyBoolean("pause", true) }
+                override fun seekBy(seconds: Double) = actions.seekBy(seconds)
+                override fun seekTo(seconds: Double) = actions.seekTo(seconds)
+                override fun next() = playNext(finishedCurrent = false)
+                override fun stop() = actions.close()
+            })
+        }.getOrNull()
+
         setContent {
             KuroTheme {
                 PlayerScreen(
@@ -177,6 +216,7 @@ class PlayerActivity : ComponentActivity() {
                     subtitle = subtitle,
                     inPip = inPip,
                     reloading = reloading,
+                    extras = extras,
                     actions = actions,
                 )
             }
@@ -187,6 +227,143 @@ class PlayerActivity : ComponentActivity() {
             while (isActive) {
                 delay(10_000)
                 if (!state.paused) saveProgress()
+            }
+        }
+
+        // Jednou za sekundu: notifikace, časovač vypnutí, další díl.
+        lifecycleScope.launch {
+            var lastPlaying: Boolean? = null
+            var tick = 0
+            while (isActive) {
+                delay(1_000)
+                val playing = state.loaded && !state.paused
+                if (playing != lastPlaying || ++tick % 10 == 0) {
+                    lastPlaying = playing
+                    media?.update(playing, state.position, extras.speed)
+                }
+                tickSleepTimer()
+                tickNextEpisode()
+            }
+        }
+    }
+
+    private fun tickSleepTimer() {
+        val at = extras.sleepAtMs
+        if (at > 0 && System.currentTimeMillis() >= at) {
+            view.mpv.setPropertyBoolean("pause", true)
+            extras.sleepAtMs = 0
+            extras.sleep = SleepTimer.OFF
+            saveProgress()
+        }
+        // "Na konci dílu": mpv na konci zůstane stát; časovač tím splnil úkol.
+        if (extras.sleep == SleepTimer.END && state.ended) extras.sleep = SleepTimer.OFF
+    }
+
+    /**
+     * Další díl: ~4 min před koncem se najde zdroj, na titulcích (kapitola,
+     * jinak posledních 45 s) naskočí nabídka s odpočtem. Ne při časovači
+     * "na konci dílu" a ne když ji uživatel zavřel.
+     */
+    private fun tickNextEpisode() {
+        if (season <= 0 || titleId <= 0 || !state.loaded || state.duration <= 0) return
+        val remaining = state.duration - state.position
+        if (!preparing && preparedNext == null && remaining <= 240) {
+            lifecycleScope.launch { prepareNext() }
+        }
+        if (nextDismissed || extras.sleep == SleepTimer.END) {
+            extras.nextUp = null
+            return
+        }
+        val ep = preparedNext?.first ?: return
+        val atEnd = state.ended || (creditsStartSec?.let { state.position >= it } ?: (remaining <= 45))
+        if (!atEnd) {
+            extras.nextUp = null // posun zpět před titulky
+            return
+        }
+        val cur = extras.nextUp
+        when {
+            cur == null -> extras.nextUp = NextUp(ep.season, ep.episode, episodeLabel(ep), NEXT_COUNTDOWN)
+            state.paused && !state.ended -> {} // při pauze odpočet stojí
+            (cur.secondsLeft ?: 0) <= 1 -> playNext(finishedCurrent = true)
+            else -> extras.nextUp = cur.copy(secondsLeft = (cur.secondsLeft ?: NEXT_COUNTDOWN) - 1)
+        }
+    }
+
+    private fun episodeLabel(e: Episode) = "S${e.season} E${e.episode}" + (e.name?.let { " · $it" } ?: "")
+
+    /** Najde další díl a zdroj co nejpodobnější tomu současnému (dabing/titulky, zdroj). */
+    private suspend fun prepareNext(): Pair<Episode, StreamInfo>? {
+        preparedNext?.let { return it }
+        if (preparing) return null
+        preparing = true
+        try {
+            val next = runCatching { core.nextEpisode(titleId, season, episode) }.getOrNull() ?: return null
+            val current = runCatching { core.cachedStreams(titleId, season, episode) }.getOrNull()
+                ?.streams?.firstOrNull { it.ident == ident }
+            val cached = runCatching { core.cachedStreams(titleId, next.season, next.episode) }.getOrNull()
+            val list = if (cached != null && cached.isFresh && cached.streams.isNotEmpty()) {
+                cached.streams
+            } else {
+                runCatching { core.findStreams(titleId, next.season, next.episode, null) }.getOrNull()
+                    ?: cached?.streams.orEmpty()
+            }
+            fun similarity(s: StreamInfo): Int {
+                var score = if (s.provider == provider) 1 else 0
+                if (current != null) {
+                    if (s.dubbed == current.dubbed) score += 2
+                    if (s.audioLangs.toSet() == current.audioLangs.toSet()) score += 1
+                    if (s.subLangs.any { it in current.subLangs }) score += 1
+                }
+                return score
+            }
+            // Seznam je seřazený od nejlepšího; při shodě vyhraje dřívější.
+            val pick = list.filter { !it.isSuspicious }.withIndex()
+                .maxWithOrNull(compareBy<IndexedValue<StreamInfo>>({ similarity(it.value) }, { -it.index }))
+                ?.value ?: return null
+            return (next to pick).also { preparedNext = it }
+        } finally {
+            preparing = false
+        }
+    }
+
+    /** Pustí další díl ve stejném přehrávači. */
+    private fun playNext(finishedCurrent: Boolean) {
+        if (season <= 0 || titleId <= 0) return
+        extras.nextUp = null
+        nextDismissed = true
+        lifecycleScope.launch {
+            val prepared = prepareNext()
+            if (prepared == null) {
+                Toast.makeText(this@PlayerActivity, "Další díl se nepodařilo najít.", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val (ep, stream) = prepared
+            reloading = true
+            try {
+                val link = core.resolveStream(stream.provider, stream.ident, LinkPurpose.STREAM)
+                // Dokoukaný díl (došlo na titulky) se uloží jako dokoukaný.
+                if (finishedCurrent && state.duration > 0) {
+                    val d = (state.duration * 1000).toLong()
+                    runCatching { core.saveProgress(titleId, season, episode, d, d, provider, ident) }
+                } else {
+                    saveProgress()
+                }
+                season = ep.season
+                episode = ep.episode
+                provider = stream.provider
+                ident = stream.ident
+                url = link.url
+                subtitle = episodeLabel(ep)
+                externalSubtitles = link.subtitles.map { Triple(it.lang, it.label, it.url) }
+                subtitlesAdded = false
+                startedRecorded = false
+                creditsStartSec = null
+                loadCurrent()
+            } catch (e: KuroException) {
+                nextDismissed = false
+                Toast.makeText(this@PlayerActivity, "Další díl nejde pustit (${e.message}).", Toast.LENGTH_SHORT).show()
+            } finally {
+                reloading = false
             }
         }
     }
@@ -225,6 +402,23 @@ class PlayerActivity : ComponentActivity() {
     }
 
     val actions = object : PlayerActions {
+        override fun setSpeed(speed: Double) {
+            extras.speed = speed
+            view.mpv.setPropertyDouble("speed", speed)
+        }
+
+        override fun setSleepTimer(timer: SleepTimer) {
+            extras.sleep = timer
+            extras.sleepAtMs = timer.minutes?.let { System.currentTimeMillis() + it * 60_000L } ?: 0L
+        }
+
+        override fun playNextNow() = playNext(finishedCurrent = true)
+
+        override fun cancelNext() {
+            nextDismissed = true
+            extras.nextUp = null
+        }
+
         override fun togglePause() {
             if (state.ended) {
                 view.mpv.command("seek", "0", "absolute")
@@ -365,6 +559,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         saveProgress()
+        media?.release()
         view.mpv.removeObserver(state)
         view.destroy()
         super.onDestroy()
@@ -393,6 +588,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_SUBTITLE = "subtitle"
         private const val EXTRA_SUBS = "subs"
+        private const val NEXT_COUNTDOWN = 10
         private val CREDITS = Regex(
             """^(end\s*)?credits|^(closing|ending)\b|^titulky|^závěrečné titulky|^outro\b|^ed\b""",
             RegexOption.IGNORE_CASE,
@@ -431,6 +627,10 @@ class PlayerActivity : ComponentActivity() {
 
 /** Co UI přehrávače smí s přehrávačem dělat. */
 interface PlayerActions {
+    fun setSpeed(speed: Double)
+    fun setSleepTimer(timer: SleepTimer)
+    fun playNextNow()
+    fun cancelNext()
     fun togglePause()
     fun seekTo(seconds: Double)
     fun seekBy(seconds: Double)

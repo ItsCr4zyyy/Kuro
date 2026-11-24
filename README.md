@@ -34,6 +34,9 @@ APK je v [GitHub Releases](https://github.com/ItsCr4zyyy/Kuro/releases/latest) (
 - MKV, MP4, AVI (Xvid/DivX), hardwarové dekódování, zvuk AC3/EAC3/DTS/TrueHD.
 - Přepínání zvukových stop a titulků, plně stylované ASS titulky pro anime, titulky ze souboru.
 - Gesta: jas, hlasitost, posun, dvojklepnutí ±10 s. Obraz v obraze.
+- Rychlost přehrávání (0,75–2×) a časovač vypnutí (15 min – 1,5 h nebo na konci dílu).
+- Další díl: na titulcích epizody nabídka s odpočtem, pustí podobný zdroj (dabing/titulky) jako předchozí díl.
+- Ovládání v notifikaci, na zamčené obrazovce a tlačítky sluchátek / Bluetooth.
 - Navázání tam, kde jsi skončil. Konec filmu se pozná podle titulků (kapitola titulků nebo posledních
   8 minut), takže dokoukaný film nezůstane v „Pokračovat“.
 

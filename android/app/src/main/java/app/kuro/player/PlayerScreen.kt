@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material.icons.outlined.BrightnessMedium
@@ -89,6 +90,7 @@ fun PlayerScreen(
     subtitle: String?,
     inPip: Boolean,
     reloading: Boolean,
+    extras: PlayerExtras,
     actions: PlayerActions,
 ) {
     var controls by remember { mutableStateOf(true) }
@@ -265,7 +267,42 @@ fun PlayerScreen(
             exit = slideOutHorizontally { it },
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
-            TracksPanel(state, actions)
+            TracksPanel(state, extras, actions)
+        }
+
+        // Nabídka dalšího dílu (i když je ovládání schované).
+        extras.nextUp?.let { next ->
+            if (!tracksOpen) {
+                NextUpCard(next, actions, Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun NextUpCard(next: NextUp, actions: PlayerActions, modifier: Modifier) {
+    androidx.compose.material3.Surface(
+        modifier = modifier.width(300.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Black.copy(alpha = 0.85f),
+        contentColor = Color.White,
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                next.secondsLeft?.let { "Další díl za $it s" } ?: "Další díl",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(next.label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.Button(onClick = actions::playNextNow) {
+                    Icon(Icons.Filled.SkipNext, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Přehrát")
+                }
+                androidx.compose.material3.OutlinedButton(onClick = actions::cancelNext) { Text("Zrušit", color = Color.White) }
+            }
         }
     }
 }
@@ -425,7 +462,7 @@ private fun isoFromMpv(lang: String): String = when (lang.lowercase()) {
 }
 
 @Composable
-private fun TracksPanel(state: PlayerState, actions: PlayerActions) {
+private fun TracksPanel(state: PlayerState, extras: PlayerExtras, actions: PlayerActions) {
     androidx.compose.material3.Surface(
         modifier = Modifier.fillMaxHeight().width(360.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
@@ -457,6 +494,31 @@ private fun TracksPanel(state: PlayerState, actions: PlayerActions) {
                     Spacer(Modifier.width(16.dp))
                     Text("Načíst titulky ze souboru (SRT, ASS…)")
                 }
+            }
+            item {
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                SheetHeader("Rychlost")
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    PlayerExtras.SPEEDS.forEach { sp ->
+                        androidx.compose.material3.FilterChip(
+                            selected = extras.speed == sp,
+                            onClick = { actions.setSpeed(sp) },
+                            label = { Text(if (sp == 1.0) "1×" else "%s×".format(sp.toString().trimEnd('0').trimEnd('.').replace('.', ','))) },
+                        )
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                SheetHeader("Časovač vypnutí")
+                if (extras.sleepAtMs > 0) {
+                    val left = ((extras.sleepAtMs - System.currentTimeMillis()) / 60_000L).coerceAtLeast(0) + 1
+                    SheetNote("Pozastaví se asi za $left min")
+                }
+            }
+            items(SleepTimer.entries, key = { "t${it.name}" }) { t ->
+                TrackRow(t.label, extras.sleep == t) { actions.setSleepTimer(t) }
             }
         }
     }

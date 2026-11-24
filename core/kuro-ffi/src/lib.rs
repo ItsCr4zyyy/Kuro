@@ -283,6 +283,20 @@ impl KuroCore {
         })
     }
 
+    /// Další díl po (sezóna, epizoda): bez speciálů (sezóna 0) a jen už
+    /// odvysílaný. Z uložených epizod, bez sítě. `None` = poslední díl.
+    pub fn next_episode(&self, title_id: i64, season: i32, episode: i32) -> Result<Option<Episode>> {
+        let today = kuro_core::time::today_iso();
+        let cur = (ep(season), ep(episode));
+        Ok(self
+            .db
+            .episodes(title_id)?
+            .iter()
+            .filter(|e| e.season > 0 && (e.season, e.episode) > cur)
+            .find(|e| e.air_date.as_deref().is_none_or(|d| d <= today.as_str()))
+            .map(Episode::from))
+    }
+
     /// Karta titulu z databáze (bez sítě, bez zápisu události).
     pub fn title_card(&self, title_id: i64) -> Result<Option<TitleCard>> {
         Ok(self.db.title(title_id)?.as_ref().map(TitleCard::from))
