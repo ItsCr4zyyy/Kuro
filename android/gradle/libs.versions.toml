@@ -20,6 +20,8 @@ castFramework = "22.3.1"
 mediarouter = "1.8.1"
 # MediaSession + notifikace s ovládáním (přehrávač je mpv, ne Media3).
 androidxMedia = "1.7.1"
+# Rozmazání pod stavovou lištou (1.7.2: novější chtějí compileSdk 37).
+haze = "1.7.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -43,6 +45,7 @@ mpv = { module = "io.github.abdallahmehiz:mpv-android-lib", version.ref = "mpv" 
 cast-framework = { module = "com.google.android.gms:play-services-cast-framework", version.ref = "castFramework" }
 mediarouter = { module = "androidx.mediarouter:mediarouter", version.ref = "mediarouter" }
 androidx-media = { module = "androidx.media:media", version.ref = "androidxMedia" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

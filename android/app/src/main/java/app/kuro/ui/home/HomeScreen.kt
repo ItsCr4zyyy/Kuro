@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.kuro.ui.common.heroHeight
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewModelScope
@@ -70,6 +71,12 @@ import app.kuro.ui.common.formatPosition
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import app.kuro.ui.common.StatusBarBlur
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 /** Vše = domov (pokračování a doporučení ze všeho); ostatní = jen daný druh. */
 enum class Section(val label: String) { ALL("Vše"), MOVIES("Filmy"), SERIES("Seriály"), ANIME("Anime") }
@@ -284,8 +291,13 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
         onPauseOrDispose {}
     }
 
+    val haze = rememberHazeState()
+    val listState = rememberLazyListState()
+    // Rozmazání až když hlavní obrázek odjede (na něm jsou ikony vidět dobře).
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 600 } }
+
     PullToRefreshBox(isRefreshing = vm.loading, onRefresh = vm::load, modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize().hazeSource(haze), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Hero(
                     card = vm.featured,
@@ -305,17 +317,7 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(vm.continueShown, key = { it.title.id }) { c ->
-                            val p = c.progress
-                            PosterCard(
-                                c.title,
-                                onClick = { onOpen(c.title.id) },
-                                progress = if (p.durationMs > 0) p.positionMs.toFloat() / p.durationMs else null,
-                                caption = when {
-                                    p.season > 0 && p.positionMs == 0L -> "S${p.season} E${p.episode} · další díl"
-                                    p.season > 0 -> "S${p.season} E${p.episode} · ${formatPosition(p.positionMs)}"
-                                    else -> formatPosition(p.positionMs)
-                                },
-                            )
+                            app.kuro.ui.common.ContinueCard(c, onClick = { onOpen(c.title.id) })
                         }
                     }
                 }
@@ -351,6 +353,7 @@ fun HomeScreen(onOpen: (Long) -> Unit) {
                 }
             }
         }
+        StatusBarBlur(haze, scrolled)
     }
 }
 
@@ -366,7 +369,7 @@ private fun Hero(
     onToggleWatchlist: () -> Unit,
 ) {
     val bg = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(if (card != null) 480.dp else 120.dp)) {
+    Box(Modifier.fillMaxWidth().height(if (card != null) heroHeight(1.2f, 0.62f, cap = 480.dp) else 120.dp)) {
         if (card != null) {
             AsyncImage(
                 model = card.background ?: card.poster,

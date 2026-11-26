@@ -29,8 +29,8 @@ android {
         applicationId = "app.kuro"
         minSdk = 26
         targetSdk = 36
-        versionCode = 104
-        versionName = "1.0.4"
+        versionCode = 105
+        versionName = "1.0.5"
     }
 
     splits {
@@ -148,6 +148,7 @@ dependencies {
     implementation(libs.cast.framework)
     implementation(libs.mediarouter)
     implementation(libs.androidx.media)
+    implementation(libs.haze)
 
     // JNA jako AAR — obsahuje nativní libjnidispatch.so pro Android.
     implementation("${libs.jna.get().module}:${libs.jna.get().version}@aar")

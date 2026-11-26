@@ -22,6 +22,8 @@ APK je v [GitHub Releases](https://github.com/ItsCr4zyyy/Kuro/releases/latest) (
 - Anime z AniListu: trendy, aktuální sezóna, nejlépe hodnocené, nejoblíbenější, filmy.
 - Hledání s diakritikou i bez, filtr Filmy / Seriály / Anime, české názvy z Wikidat, anime i podle japonského názvu (romaji).
 - Druhy obsahu jde v nastavení zapnout a skrýt; anime je ve výchozím stavu vypnuté.
+- Rozvržení i pro ohebné telefony a tablety: na rozloženém displeji velký detail s logem titulu,
+  díly ve dvou sloupcích a plovoucí lišta dole.
 
 **Zdroje**
 - Přehraj.to a Hellspy bez účtu (převody do 1080p, titulky od zdroje), Webshare s účtem.

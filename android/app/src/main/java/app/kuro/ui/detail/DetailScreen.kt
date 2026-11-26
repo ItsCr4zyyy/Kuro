@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import app.kuro.ui.common.heroHeight
+import app.kuro.ui.common.isWideScreen
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -88,6 +93,11 @@ import app.kuro.ui.common.languageLine
 import app.kuro.ui.common.qualityBadges
 import coil3.compose.AsyncImage
 import java.util.Locale
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import app.kuro.ui.common.StatusBarBlur
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 @Composable
 fun DetailScreen(titleId: Long, onBack: () -> Unit, onLogin: () -> Unit) {
@@ -225,120 +235,274 @@ private fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
 @Composable
 private fun DetailContent(d: TitleDetail, vm: DetailViewModel, onBack: () -> Unit, onDownloadSeason: (Int) -> Unit) {
-    val card = d.card
-    val bg = MaterialTheme.colorScheme.background
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-        item {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f)) {
-                AsyncImage(
-                    model = card.background ?: card.poster,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.35f), 0.5f to Color.Transparent, 1f to bg),
-                    ),
-                )
-                BackButton(onBack, Modifier.statusBarsPadding())
-                app.kuro.ui.tv.TvButton(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp))
-            }
-        }
-        item {
-            Row(Modifier.padding(horizontal = 16.dp).offset(y = (-48).dp)) {
-                AsyncImage(
-                    model = card.poster,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.padding(top = 48.dp)) {
-                    Text(card.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    if (card.originalTitle != card.title) {
-                        Text(card.originalTitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        listOfNotNull(
-                            card.year?.toString(),
-                            if (card.anime) "Anime" else kindLabel(card.kind),
-                            d.runtimeMin?.let { formatRuntime(it) },
-                            card.rating?.let { String.format(Locale.ROOT, "★ %.1f", it) },
-                        ).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-        item {
-            Column(Modifier.padding(horizontal = 16.dp).offset(y = (-32).dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val next = if (vm.isSeries) vm.nextEpisode() else null
-                    Button(onClick = { if (vm.isSeries) next?.let(vm::openEpisode) else vm.openMovie() }, enabled = !vm.isSeries || next != null) {
-                        Icon(Icons.Filled.PlayArrow, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            when {
-                                !vm.isSeries -> vm.progressFor(0, 0)?.takeIf { !it.finished && it.positionMs > 60_000 }
-                                    ?.let { "Pokračovat ${formatPosition(it.positionMs)}" } ?: "Přehrát"
-                                next != null -> "S${next.season} E${next.episode}"
-                                else -> "Přehrát"
-                            },
-                        )
-                    }
-                    OutlinedButton(onClick = vm::toggleWatchlist) {
-                        Icon(if (d.inWatchlist) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (d.inWatchlist) "V oblíbených" else "Oblíbené")
-                    }
-                }
-                if (!vm.isSeries) {
-                    vm.downloadFor(0, 0)?.let { dl ->
-                        Spacer(Modifier.height(8.dp))
-                        DownloadLine(dl)
-                    }
-                }
-                if (card.genres.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(card.genres.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                }
-                d.overview?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
+    val wide = isWideScreen()
+    // Na širokém displeji díly ve dvou sloupcích a s větším odsazením.
+    val columns = if (wide) 2 else 1
+    val side = if (wide) 16.dp else 0.dp
+    val haze = rememberHazeState()
+    val listState = rememberLazyListState()
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 300 } }
+    Box(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize().hazeSource(haze), state = listState, contentPadding = PaddingValues(bottom = 32.dp)) {
+        if (wide) {
+            item { WideHeader(d, vm, onBack) }
+        } else {
+            item { PhoneHeader(d, vm, onBack) }
         }
         if (vm.isSeries && vm.seasons.isNotEmpty()) {
             item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(vm.seasons) { s ->
-                        FilterChip(vm.season == s, { vm.selectSeason(s) }, { Text("Sezóna $s") })
+                Column(Modifier.fillMaxWidth().padding(horizontal = side)) {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(vm.seasons) { s ->
+                            FilterChip(vm.season == s, { vm.selectSeason(s) }, { Text("Sezóna $s") })
+                        }
                     }
-                }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.TextButton(
-                        onClick = { vm.season?.let(onDownloadSeason) },
-                        enabled = vm.seasonProgress == null,
-                    ) {
-                        Icon(Icons.Outlined.Download, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Stáhnout sezónu")
-                    }
-                    vm.seasonProgress?.let {
-                        CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.TextButton(
+                            onClick = { vm.season?.let(onDownloadSeason) },
+                            enabled = vm.seasonProgress == null,
+                        ) {
+                            Icon(Icons.Outlined.Download, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Stáhnout sezónu")
+                        }
+                        vm.seasonProgress?.let {
+                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
             val episodes = d.episodes.filter { it.season == vm.season }
-            items(episodes, key = { "${it.season}-${it.episode}" }) { e -> EpisodeRow(e, vm) { vm.openEpisode(e) } }
+            items(episodes.chunked(columns), key = { row -> row.joinToString { "${it.season}-${it.episode}" } }) { row ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = side)) {
+                    row.forEach { e -> Box(Modifier.weight(1f)) { EpisodeRow(e, vm) { vm.openEpisode(e) } } }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+        item {
+            Facts(
+                d,
+                columns = if (wide) 3 else 2,
+                modifier = Modifier.padding(horizontal = if (wide) 32.dp else 16.dp, vertical = if (wide) 16.dp else 0.dp),
+            )
         }
     }
+    StatusBarBlur(haze, scrolled)
+    }
+}
+
+/** Telefon: pozadí, pod ním plakát s názvem, tlačítka a popis. */
+@Composable
+private fun PhoneHeader(d: TitleDetail, vm: DetailViewModel, onBack: () -> Unit) {
+    val card = d.card
+    val bg = MaterialTheme.colorScheme.background
+    Column {
+        Box(Modifier.fillMaxWidth().height(heroHeight(10f / 16f, 0.5f))) {
+            AsyncImage(
+                model = card.background ?: card.poster,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.35f), 0.5f to Color.Transparent, 1f to bg),
+                ),
+            )
+            BackButton(onBack, Modifier.statusBarsPadding())
+            app.kuro.ui.tv.TvButton(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp))
+        }
+        Row(Modifier.padding(horizontal = 16.dp).offset(y = (-48).dp)) {
+            AsyncImage(
+                model = card.poster,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.width(104.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.padding(top = 48.dp)) {
+                Text(card.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (card.originalTitle != card.title) {
+                    Text(card.originalTitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.height(4.dp))
+                MetaLine(d)
+            }
+        }
+        Column(Modifier.padding(horizontal = 16.dp).offset(y = (-32).dp)) {
+            ActionButtons(d, vm)
+            if (card.genres.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Genres(d)
+            }
+            d.overview?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/**
+ * Široký displej (rozložený ohebný telefon, tablet): pozadí přes skoro celou
+ * obrazovku a vlevo přes něj logo/název, údaje, popis a tlačítka.
+ */
+@Composable
+private fun WideHeader(d: TitleDetail, vm: DetailViewModel, onBack: () -> Unit) {
+    val card = d.card
+    val bg = MaterialTheme.colorScheme.background
+    val screenH = LocalConfiguration.current.screenHeightDp
+    Box(Modifier.fillMaxWidth().heightIn(min = (screenH * 0.72f).dp)) {
+        AsyncImage(
+            model = card.background ?: card.poster,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.TopEnd,
+            modifier = Modifier.matchParentSize(),
+        )
+        // Zleva tma pod text, dole přechod do pozadí stránky.
+        Box(
+            Modifier.matchParentSize().background(
+                Brush.horizontalGradient(0f to bg, 0.38f to bg.copy(alpha = 0.85f), 0.7f to Color.Transparent),
+            ),
+        )
+        Box(
+            Modifier.matchParentSize().background(
+                Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.35f), 0.25f to Color.Transparent, 0.75f to Color.Transparent, 1f to bg),
+            ),
+        )
+        BackButton(onBack, Modifier.statusBarsPadding())
+        app.kuro.ui.tv.TvButton(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp))
+
+        Column(
+            Modifier.align(Alignment.BottomStart).statusBarsPadding()
+                .padding(start = 32.dp, end = 32.dp, top = 72.dp, bottom = 16.dp)
+                .widthIn(max = 520.dp),
+        ) {
+            var logoFailed by remember(d.logo) { mutableStateOf(d.logo == null) }
+            if (!logoFailed) {
+                AsyncImage(
+                    model = d.logo,
+                    contentDescription = card.title,
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.CenterStart,
+                    onError = { logoFailed = true },
+                    modifier = Modifier.height(110.dp).widthIn(max = 380.dp).fillMaxWidth(),
+                )
+                // Logo bývá v originále; český název pod ním, když se liší.
+                if (card.title != card.originalTitle) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(card.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
+                Text(card.title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                if (card.originalTitle != card.title) {
+                    Text(card.originalTitle, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            MetaLine(d)
+            if (card.genres.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Genres(d)
+            }
+            d.overview?.let {
+                Spacer(Modifier.height(12.dp))
+                Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = 6, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(20.dp))
+            ActionButtons(d, vm)
+        }
+    }
+}
+
+@Composable
+private fun MetaLine(d: TitleDetail) {
+    val card = d.card
+    Text(
+        listOfNotNull(
+            card.year?.toString(),
+            if (card.anime) "Anime" else kindLabel(card.kind),
+            d.runtimeMin?.let { formatRuntime(it) },
+            card.rating?.let { String.format(Locale.ROOT, "★ %.1f", it) },
+        ).joinToString(" · "),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun Genres(d: TitleDetail) {
+    Text(d.card.genres.joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
+private fun ActionButtons(d: TitleDetail, vm: DetailViewModel) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val next = if (vm.isSeries) vm.nextEpisode() else null
+        Button(onClick = { if (vm.isSeries) next?.let(vm::openEpisode) else vm.openMovie() }, enabled = !vm.isSeries || next != null) {
+            Icon(Icons.Filled.PlayArrow, null)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                when {
+                    !vm.isSeries -> vm.progressFor(0, 0)?.takeIf { !it.finished && it.positionMs > 60_000 }
+                        ?.let { "Pokračovat ${formatPosition(it.positionMs)}" } ?: "Přehrát"
+                    next != null -> "S${next.season} E${next.episode}"
+                    else -> "Přehrát"
+                },
+            )
+        }
+        OutlinedButton(onClick = vm::toggleWatchlist) {
+            Icon(if (d.inWatchlist) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder, null)
+            Spacer(Modifier.width(6.dp))
+            Text(if (d.inWatchlist) "V oblíbených" else "Oblíbené")
+        }
+    }
+    if (!vm.isSeries) {
+        vm.downloadFor(0, 0)?.let { dl ->
+            Spacer(Modifier.height(8.dp))
+            DownloadLine(dl)
+        }
+    }
+}
+
+/** Podrobnosti pod hlavičkou: jen to, co v ní není (a co opravdu víme). */
+@Composable
+private fun Facts(d: TitleDetail, columns: Int, modifier: Modifier = Modifier) {
+    val card = d.card
+    val facts = listOfNotNull(
+        d.releaseDate?.let { "Premiéra" to formatDate(it) },
+        d.countries.takeIf { it.isNotEmpty() }?.let { "Země" to it.joinToString(", ") },
+        d.episodes.map { it.season }.distinct().size.takeIf { it > 0 }?.let { "Sezóny" to "$it" },
+        d.episodes.size.takeIf { it > 0 }?.let { "Díly" to "$it" },
+    )
+    if (facts.isEmpty()) return
+    Column(modifier) {
+        HorizontalDivider(Modifier.padding(bottom = 16.dp))
+        Text("Podrobnosti", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(12.dp))
+        facts.chunked(columns).forEach { row ->
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                row.forEach { (label, value) ->
+                    Column(Modifier.weight(1f).padding(end = 16.dp)) {
+                        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(value, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** "2026-07-17" → "17. 7. 2026" (jiný tvar se nechá, jak je). */
+private fun formatDate(iso: String): String {
+    val p = iso.take(10).split('-').mapNotNull { it.toIntOrNull() }
+    return if (p.size == 3) "${p[2]}. ${p[1]}. ${p[0]}" else iso
 }
 
 @Composable

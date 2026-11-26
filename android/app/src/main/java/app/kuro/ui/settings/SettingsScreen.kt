@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.kuro.BuildConfig
+import app.kuro.ui.common.readableWidth
 import app.kuro.core.AccountInfo
 import app.kuro.core.DownloadStatus
 import app.kuro.ui.common.formatSize
@@ -49,6 +50,13 @@ import coil3.SingletonImageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import app.kuro.ui.common.StatusBarBlur
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.TopAppBarDefaults
 
 @Composable
 fun SettingsScreen(onLogin: () -> Unit) {
@@ -85,8 +93,12 @@ fun SettingsScreen(onLogin: () -> Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        TopAppBar(title = { Text("Nastavení") })
+    val haze = rememberHazeState()
+    val scroll = rememberScrollState()
+    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().hazeSource(haze).verticalScroll(scroll)) {
+        TopAppBar(title = { Text("Nastavení") }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent))
+        Column(Modifier.readableWidth()) {
 
         Group("Zdroje") {
             var disabled by remember { mutableStateOf(app.settings.disabledProviders) }
@@ -340,6 +352,9 @@ fun SettingsScreen(onLogin: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(16.dp).align(Alignment.CenterHorizontally),
         )
+        }
+    }
+    StatusBarBlur(haze, scroll.value > 0)
     }
 }
 

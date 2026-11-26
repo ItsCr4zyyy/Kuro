@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +29,15 @@ import app.kuro.ui.common.Message
 import app.kuro.ui.common.PosterCard
 import app.kuro.ui.common.SectionTitle
 import app.kuro.ui.common.formatPosition
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
+import app.kuro.ui.common.StatusBarBlur
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.MaterialTheme
 
 /** Knihovna je čistě lokální — funguje i bez připojení. */
 @Composable
@@ -55,17 +63,29 @@ fun LibraryScreen(onOpen: (Long) -> Unit) {
         }
     }
 
+    val haze = rememberHazeState()
+    val gridState = rememberLazyGridState()
+    val scrolled by remember { derivedStateOf { gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0 } }
+    Box(Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(110.dp),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().hazeSource(haze),
+        state = gridState,
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { TopAppBar(title = { Text("Knihovna") }) }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            // Nadpis zarovnaný s mřížkou (TopAppBar by měl vlastní odsazení a šedé pozadí).
+            Text(
+                "Knihovna",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.statusBarsPadding().padding(top = 18.dp, bottom = 10.dp),
+            )
+        }
 
         if (downloads.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Stažené", Modifier) }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Stažené", horizontalPadding = 0.dp) }
             items(downloads, key = { "d-${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { d ->
                 DownloadRow(d, onOpen = onOpen, onChanged = reloadDownloads)
             }
@@ -76,7 +96,7 @@ fun LibraryScreen(onOpen: (Long) -> Unit) {
             }
         }
         if (watching.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Rozkoukané", Modifier) }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Rozkoukané", horizontalPadding = 0.dp) }
             items(watching, key = { "w-${it.title.id}" }) { c ->
                 val p = c.progress
                 PosterCard(
@@ -93,10 +113,12 @@ fun LibraryScreen(onOpen: (Long) -> Unit) {
             }
         }
         if (favorites.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Oblíbené", Modifier) }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Oblíbené", horizontalPadding = 0.dp) }
             items(favorites, key = { "f-${it.id}" }) { card ->
                 PosterCard(card, onClick = { onOpen(card.id) }, modifier = Modifier.fillMaxWidth())
             }
         }
+    }
+    StatusBarBlur(haze, scrolled)
     }
 }

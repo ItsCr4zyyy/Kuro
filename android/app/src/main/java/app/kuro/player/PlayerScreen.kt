@@ -498,18 +498,7 @@ private fun TracksPanel(state: PlayerState, extras: PlayerExtras, actions: Playe
             item {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 SheetHeader("Rychlost")
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    PlayerExtras.SPEEDS.forEach { sp ->
-                        androidx.compose.material3.FilterChip(
-                            selected = extras.speed == sp,
-                            onClick = { actions.setSpeed(sp) },
-                            label = { Text(if (sp == 1.0) "1×" else "%s×".format(sp.toString().trimEnd('0').trimEnd('.').replace('.', ','))) },
-                        )
-                    }
-                }
+                SpeedSelector(extras.speed, actions::setSpeed)
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 SheetHeader("Časovač vypnutí")
                 if (extras.sleepAtMs > 0) {
@@ -544,3 +533,38 @@ private fun TrackRow(label: String, selected: Boolean, onClick: () -> Unit) {
         if (selected) Icon(Icons.Filled.Check, "Vybráno", tint = MaterialTheme.colorScheme.primary)
     }
 }
+
+/**
+ * Rychlost jako jeden pruh s pěti stejně širokými políčky — čipy se
+ * v úzkém panelu (výřez kamery na šířku) zalamovaly ("2" a pod tím "×").
+ */
+@Composable
+private fun SpeedSelector(current: Double, onSelect: (Double) -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(40.dp).clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+    ) {
+        PlayerExtras.SPEEDS.forEach { sp ->
+            val selected = current == sp
+            Box(
+                Modifier.weight(1f).fillMaxHeight().padding(3.dp).clip(RoundedCornerShape(9.dp))
+                    .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .clickable { onSelect(sp) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    speedLabel(sp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+/** 1.0 → "1×", 0.75 → "0,75×" */
+private fun speedLabel(sp: Double): String =
+    (if (sp % 1.0 == 0.0) sp.toInt().toString() else sp.toString().trimEnd('0').replace('.', ',')) + "×"

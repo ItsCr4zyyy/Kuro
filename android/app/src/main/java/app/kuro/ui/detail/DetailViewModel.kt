@@ -279,7 +279,7 @@ class DetailViewModel(
                         event = PlayEvent.NeedLogin
                     }
                     else -> {
-                        streamError = "Zdroj nejde přehrát (${e.message}). Zkus jiný."
+                        streamError = streamErrorText(e, stream.provider)
                         // Seznam znovu z databáze — nefunkční zdroj spadl níž.
                         streams = runCatching { core.cachedStreams(titleId, t.season, t.episode).streams }.getOrDefault(streams)
                     }
@@ -304,4 +304,19 @@ class DetailViewModel(
         val last = d.progress.maxByOrNull { it.updatedAtMs }
         return last?.season?.takeIf { it > 0 } ?: d.episodes.first().season
     }
+}
+
+/** Srozumitelná hláška místo "provider=hellspy, code=NOT_FOUND, msg=…". */
+private fun streamErrorText(e: KuroException, provider: app.kuro.core.Provider): String {
+    val name = app.kuro.ui.common.providerLabel(provider)
+    val why = when (e) {
+        is KuroException.Provider -> when (e.code.uppercase()) {
+            "NOT_FOUND", "FILE_NOT_FOUND" -> "Soubor už na $name není (smazaný)."
+            else -> "$name: ${e.msg.trimEnd('.')}."
+        }
+        is KuroException.Network -> "$name teď neodpovídá."
+        is KuroException.NotFound -> "Soubor už na $name není."
+        else -> "Tenhle zdroj nejde přehrát."
+    }
+    return "$why Zkus jiný zdroj."
 }
